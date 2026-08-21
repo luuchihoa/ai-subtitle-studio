@@ -46,7 +46,9 @@
                 <div>
                     <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
                         AI Subtitle Studio
-                        <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-medium border border-blue-500/30">v1.0 Pro</span>
+                        <span id="connectionBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-medium border border-blue-500/30 flex items-center gap-1 cursor-pointer" onclick="event.stopPropagation(); app.showSettingsModal()" title="Bấm để cấu hình kết nối">
+                            <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span> Web Mode
+                        </span>
                     </h1>
                     <p id="currentProjectTitle" class="text-xs text-slate-400 truncate max-w-xs">Chưa chọn dự án</p>
                 </div>
@@ -65,6 +67,9 @@
             <button onclick="app.showUploadModal()" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-dark-border hover:bg-slate-700 text-slate-200 transition flex items-center gap-2">
                 <i class="fa-solid fa-plus text-blue-400"></i> File mới
             </button>
+            <button onclick="app.showImportSubModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-dark-border hover:bg-slate-700 text-slate-200 transition flex items-center gap-1.5" title="Nhập file phụ đề có sẵn">
+                <i class="fa-solid fa-file-import text-amber-400"></i> Nhập SRT/VTT
+            </button>
             <button id="btnAiTranscribe" onclick="app.showTranscribeModal()" class="hidden px-4 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/20 transition flex items-center gap-2">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> Tạo phụ đề AI
             </button>
@@ -77,6 +82,9 @@
             <button id="btnExport" onclick="app.showExportModal()" class="hidden px-4 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-2 shadow-md shadow-emerald-500/20">
                 <i class="fa-solid fa-download"></i> Xuất file
             </button>
+            <button onclick="app.showSettingsModal()" class="w-8 h-8 rounded-lg bg-dark-border hover:bg-slate-700 text-slate-300 flex items-center justify-center transition" title="Cài đặt AI & Kết nối">
+                <i class="fa-solid fa-gear text-xs"></i>
+            </button>
         </div>
     </header>
 
@@ -87,11 +95,14 @@
         </div>
         <h2 class="text-xl font-bold text-slate-200 mb-2">Bắt đầu tạo phụ đề chuẩn xác</h2>
         <p class="text-sm text-slate-400 max-w-md mb-6 leading-relaxed">
-            Hỗ trợ file âm thanh (MP3, WAV, M4A, FLAC) và video (MP4, MOV, WebM). Nhận diện giọng nói chuẩn từng từ, lọc tạp âm và phân tách người nói.
+            Hỗ trợ xử lý trực tiếp trên trình duyệt hoặc qua AI Backend. Nhận diện giọng nói chuẩn từng từ, lọc tạp âm và phân tách người nói.
         </p>
-        <div class="flex gap-4">
+        <div class="flex flex-wrap justify-center gap-4">
             <button onclick="app.showUploadModal()" class="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold shadow-lg shadow-blue-500/30 transition flex items-center gap-2">
                 <i class="fa-solid fa-arrow-up-from-bracket"></i> Tải lên file Audio/Video
+            </button>
+            <button onclick="app.loadDemoProject()" class="px-5 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 text-sm font-semibold transition flex items-center gap-2">
+                <i class="fa-solid fa-play"></i> Dùng thử file Demo
             </button>
             <button onclick="app.showProjectListModal()" class="px-5 py-2.5 rounded-xl bg-dark-card hover:bg-slate-800 border border-dark-border text-slate-300 text-sm font-medium transition">
                 <i class="fa-solid fa-folder-open mr-1.5"></i> Danh sách dự án
@@ -230,20 +241,40 @@
             <form id="uploadForm" onsubmit="app.handleUploadSubmit(event)" class="space-y-4">
                 <div>
                     <label class="block text-xs text-slate-400 mb-1.5">Tên dự án (Tùy chọn)</label>
-                    <input type="text" id="uploadTitle" placeholder="Ví dụ: Phụ đề Bài giảng 01" class="w-full px-3 py-2 text-sm rounded-lg bg-dark-bg border border-dark-border text-slate-200 focus:outline-none focus:border-blue-500">
+                    <input type="text" id="uploadTitle" placeholder="Ví dụ: Phụ đề Video 01" class="w-full px-3 py-2 text-sm rounded-lg bg-dark-bg border border-dark-border text-slate-200 focus:outline-none focus:border-blue-500">
                 </div>
 
                 <div class="border-2 border-dashed border-dark-border hover:border-blue-500/60 rounded-xl p-6 text-center cursor-pointer transition" onclick="document.getElementById('fileInput').click()">
                     <input type="file" id="fileInput" accept="audio/*,video/*" class="hidden" onchange="app.handleFileSelect(this)">
                     <i class="fa-solid fa-file-audio text-3xl text-blue-500 mb-2"></i>
                     <p id="selectedFileName" class="text-xs text-slate-300 font-medium">Nhấp để chọn file hoặc kéo thả vào đây</p>
-                    <p class="text-[11px] text-slate-500 mt-1">MP3, WAV, M4A, FLAC, MP4, MOV, WebM (Lên đến 500MB)</p>
+                    <p class="text-[11px] text-slate-500 mt-1">MP3, WAV, M4A, FLAC, MP4, MOV, WebM</p>
                 </div>
 
                 <button type="submit" id="btnSubmitUpload" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-upload"></i> Tải lên & Khởi tạo
+                    <i class="fa-solid fa-upload"></i> Mở & Khởi tạo Dự án
                 </button>
             </form>
+        </div>
+    </div>
+
+    <!-- MODAL: IMPORT EXISTING SUBTITLE (SRT / VTT / JSON) -->
+    <div id="modalImportSub" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-dark-card border border-dark-border rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-file-import text-amber-400"></i> Nhập file Phụ đề có sẵn
+                </h3>
+                <button onclick="app.closeModal('modalImportSub')" class="text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="border-2 border-dashed border-dark-border hover:border-amber-500/60 rounded-xl p-6 text-center cursor-pointer transition" onclick="document.getElementById('subFileInput').click()">
+                <input type="file" id="subFileInput" accept=".srt,.vtt,.json" class="hidden" onchange="app.handleImportSubFile(this)">
+                <i class="fa-solid fa-closed-captioning text-3xl text-amber-400 mb-2"></i>
+                <p id="importSubFileName" class="text-xs text-slate-300 font-medium">Chọn file .SRT, .VTT hoặc .JSON</p>
+            </div>
         </div>
     </div>
 
@@ -262,13 +293,12 @@
             <form onsubmit="app.handleTranscribeSubmit(event)" class="space-y-4">
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs text-slate-400 mb-1">Mô hình AI Whisper</label>
-                        <select id="cfgModelSize" class="w-full px-3 py-2 text-xs rounded-lg bg-dark-bg border border-dark-border text-slate-200">
-                            <option value="tiny">Tiny (Siêu nhanh - 39M)</option>
-                            <option value="base" selected>Base (Cân bằng - 74M)</option>
-                            <option value="small">Small (Chính xác cao - 244M)</option>
-                            <option value="medium">Medium (Chuyên nghiệp - 769M)</option>
-                            <option value="large-v3">Large-v3 (Độ chính xác tối đa - 1.5B)</option>
+                        <label class="block text-xs text-slate-400 mb-1">Công cụ nhận diện AI</label>
+                        <select id="cfgEngine" onchange="app.onEngineChange(this.value)" class="w-full px-3 py-2 text-xs rounded-lg bg-dark-bg border border-dark-border text-slate-200">
+                            <option value="auto" selected>Tự động (Auto Best Engine)</option>
+                            <option value="groq">Groq Whisper API (Siêu nhanh 1s)</option>
+                            <option value="openai">OpenAI Whisper API</option>
+                            <option value="backend">Local Backend (Faster-Whisper)</option>
                         </select>
                     </div>
                     <div>
@@ -285,41 +315,33 @@
                     </div>
                 </div>
 
-                <!-- AI Accuracy Features -->
-                <div class="bg-dark-bg/60 p-3 rounded-xl border border-dark-border/60 space-y-2.5">
-                    <span class="text-xs font-semibold text-slate-300 block mb-1">Tính năng nâng cao:</span>
-                    <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-                        <span><i class="fa-solid fa-waveform-lines text-blue-400 mr-2"></i>Lọc tạp âm & khoảng lặng (VAD)</span>
-                        <input type="checkbox" id="cfgEnableVad" checked class="rounded bg-dark-card border-dark-border text-blue-600 focus:ring-0">
-                    </label>
-                    <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-                        <span><i class="fa-solid fa-users text-emerald-400 mr-2"></i>Phân tách người nói (Diarization)</span>
-                        <input type="checkbox" id="cfgEnableDiarization" checked class="rounded bg-dark-card border-dark-border text-blue-600 focus:ring-0">
-                    </label>
-                    <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-                        <span><i class="fa-solid fa-filter text-amber-400 mr-2"></i>Khử lặp từ & Hallucination AI</span>
-                        <input type="checkbox" id="cfgFilterHallucinations" checked class="rounded bg-dark-card border-dark-border text-blue-600 focus:ring-0">
-                    </label>
-                    <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-                        <span><i class="fa-solid fa-scissors text-purple-400 mr-2"></i>Xóa từ đệm (ừm, à, nè...)</span>
-                        <input type="checkbox" id="cfgRemoveFillers" class="rounded bg-dark-card border-dark-border text-blue-600 focus:ring-0">
-                    </label>
+                <!-- API Key Notice if on Web -->
+                <div id="apiKeyPromptContainer" class="p-3 bg-blue-950/40 rounded-xl border border-blue-500/30 text-xs text-blue-300 space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="font-semibold"><i class="fa-solid fa-key mr-1.5"></i>Khóa API (Tùy chọn):</span>
+                        <a href="https://console.groq.com/keys" target="_blank" class="text-blue-400 underline text-[11px]">Lấy Groq API Key miễn phí &rarr;</a>
+                    </div>
+                    <input type="password" id="cfgApiKeyInput" placeholder="gsk_... hoặc sk-..." class="w-full px-3 py-1.5 text-xs rounded-lg bg-dark-bg border border-dark-border text-slate-200 focus:outline-none focus:border-blue-500">
+                    <p class="text-[10px] text-slate-400">Khóa được lưu cục bộ trên trình duyệt của bạn (không gửi đi đâu khác).</p>
                 </div>
 
-                <!-- Subtitle Formatting Defaults -->
-                <div class="grid grid-cols-2 gap-3 text-xs">
-                    <div>
-                        <label class="text-slate-400 block mb-1">Max Ký tự/dòng (CPL)</label>
-                        <input type="number" id="cfgMaxCpl" value="40" min="20" max="60" class="w-full px-3 py-1.5 rounded-lg bg-dark-bg border border-dark-border text-slate-200">
-                    </div>
-                    <div>
-                        <label class="text-slate-400 block mb-1">Tốc độ đọc Max CPS</label>
-                        <input type="number" id="cfgMaxCps" value="20" min="10" max="30" class="w-full px-3 py-1.5 rounded-lg bg-dark-bg border border-dark-border text-slate-200">
+                <!-- AI Accuracy Features -->
+                <div class="bg-dark-bg/60 p-3 rounded-xl border border-dark-border/60 space-y-2 text-xs">
+                    <span class="font-semibold text-slate-300 block mb-1">Tiêu chuẩn phát sóng & Định dạng:</span>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-slate-400 block mb-1">Max Ký tự/dòng (CPL)</label>
+                            <input type="number" id="cfgMaxCpl" value="40" min="20" max="60" class="w-full px-3 py-1.5 rounded-lg bg-dark-bg border border-dark-border text-slate-200">
+                        </div>
+                        <div>
+                            <label class="text-slate-400 block mb-1">Tốc độ đọc Max CPS</label>
+                            <input type="number" id="cfgMaxCps" value="20" min="10" max="30" class="w-full px-3 py-1.5 rounded-lg bg-dark-bg border border-dark-border text-slate-200">
+                        </div>
                     </div>
                 </div>
 
                 <button type="submit" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-play"></i> Bắt đầu xử lý
+                    <i class="fa-solid fa-play"></i> Bắt đầu Nhận diện & Tạo Phụ đề
                 </button>
             </form>
         </div>
@@ -332,8 +354,8 @@
                 <i class="fa-solid fa-compact-disc"></i>
             </div>
             <div>
-                <h3 class="text-base font-bold text-slate-100">Đang tạo phụ đề tự động...</h3>
-                <p id="progressMessage" class="text-xs text-slate-400 mt-1">Đang xử lý âm thanh...</p>
+                <h3 class="text-base font-bold text-slate-100">Đang xử lý phụ đề...</h3>
+                <p id="progressMessage" class="text-xs text-slate-400 mt-1">Đang phân tích âm thanh...</p>
             </div>
             
             <div class="w-full bg-dark-bg h-2.5 rounded-full overflow-hidden border border-dark-border">
@@ -435,6 +457,42 @@
 
             <button onclick="app.triggerDownloadExport()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2">
                 <i class="fa-solid fa-file-arrow-down"></i> Tải file về máy
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL: SETTINGS & BACKEND CONFIG -->
+    <div id="modalSettings" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-dark-card border border-dark-border rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-gear text-blue-400"></i> Cài đặt Kết nối & AI
+                </h3>
+                <button onclick="app.closeModal('modalSettings')" class="text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="text-slate-400 block mb-1">Groq API Key (Khuyên dùng - Miễn phí & Siêu nhanh):</label>
+                    <input type="password" id="settingGroqKey" placeholder="gsk_..." class="w-full px-3 py-2 rounded-lg bg-dark-bg border border-dark-border text-slate-200 focus:outline-none focus:border-blue-500">
+                    <p class="text-[10px] text-slate-500 mt-1">Lấy key miễn phí tại <a href="https://console.groq.com/keys" target="_blank" class="text-blue-400 underline">console.groq.com</a></p>
+                </div>
+
+                <div>
+                    <label class="text-slate-400 block mb-1">OpenAI API Key (Tùy chọn):</label>
+                    <input type="password" id="settingOpenaiKey" placeholder="sk-..." class="w-full px-3 py-2 rounded-lg bg-dark-bg border border-dark-border text-slate-200 focus:outline-none focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="text-slate-400 block mb-1">Địa chỉ Backend Server (Mặc định khi chạy local):</label>
+                    <input type="text" id="settingBackendUrl" placeholder="http://localhost:8000/api" class="w-full px-3 py-2 rounded-lg bg-dark-bg border border-dark-border text-slate-200 focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <button onclick="app.saveSettings()" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-500/30">
+                Lưu Cài đặt
             </button>
         </div>
     </div>
