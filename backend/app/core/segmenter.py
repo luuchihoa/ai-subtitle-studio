@@ -3,7 +3,10 @@ from typing import List, Dict, Any, Optional
 class SmartSubtitleSegmenter:
     """
     Transforms a stream of timecoded words into professional, broadcast-compliant subtitle blocks.
-    Complies with Netflix / BBC subtitling rules (CPL, CPS, Line limits, Natural pause splitting).
+    Complies with Netflix / BBC subtitling rules:
+    - Splits IMMEDIATELY on any noticeable silence gap (pause threshold >= 0.4s).
+    - Splits on sentence punctuation (. ? ! ...) when followed by pause or length limit.
+    - Limits Characters Per Line (CPL) and total screen duration without bleeding into pauses.
     """
 
     @staticmethod
@@ -24,7 +27,6 @@ class SmartSubtitleSegmenter:
 
         for w in words:
             word_len = len(w)
-            # Check if adding this word exceeds max_cpl
             space = 1 if current_line else 0
             if current_len + space + word_len <= max_cpl:
                 current_line.append(w)
@@ -38,13 +40,11 @@ class SmartSubtitleSegmenter:
         if current_line:
             lines.append(" ".join(current_line))
 
-        # If lines exceed max_lines, compress excess into the last line or balance
+        # If lines exceed max_lines, balance into 2 lines
         if len(lines) > max_lines:
-            # Rebalance into max_lines
-            total_words = words
-            half = len(total_words) // 2
-            line1 = " ".join(total_words[:half])
-            line2 = " ".join(total_words[half:])
+            half = len(words) // 2
+            line1 = " ".join(words[:half])
+            line2 = " ".join(words[half:])
             return f"{line1}\n{line2}"
 
         return "\n".join(lines)
@@ -55,79 +55,74 @@ class SmartSubtitleSegmenter:
         words: List[Dict[str, Any]],
         max_cpl: int = 40,
         max_lines: int = 2,
-        min_duration: float = 1.0,
-        max_duration: float = 7.0,
+        min_duration: float = 0.8,
+        max_duration: float = 6.5,
         max_cps: float = 20.0,
-        pause_threshold: float = 0.55
+        pause_threshold: float = 0.40  # Pauses >= 0.40s MUST trigger a new subtitle block
     ) -> List[Dict[str, Any]]:
         """
-        Groups timecoded words into optimal subtitle segments.
+        Groups timecoded words into optimal subtitle segments with precise pause awareness.
         """
         if not words:
             return []
 
         segments = []
         current_block_words = []
-        block_start_time = words[0]["start"]
         max_total_chars = max_cpl * max_lines
 
         hard_punctuation = {".", "!", "?", "...", "…"}
         soft_punctuation = {",", ";", ":", "-", "—"}
 
         for i, word_item in enumerate(words):
-            word_str = word_item["word"]
+            word_str = word_item["word"].strip()
+            if not word_str:
+                continue
+
             word_start = word_item["start"]
             word_end = word_item["end"]
 
-            # Initialize block start if empty
+            # Initialize block if empty
             if not current_block_words:
-                block_start_time = word_start
                 current_block_words.append(word_item)
                 continue
 
             prev_word = current_block_words[-1]
             gap = word_start - prev_word["end"]
+            block_start_time = current_block_words[0]["start"]
             current_duration = word_end - block_start_time
 
-            # Compute current character length if we add this word
             current_text = " ".join([w["word"] for w in current_block_words])
             tentative_text = f"{current_text} {word_str}"
             tentative_len = len(tentative_text)
 
-            # Determine split triggers:
             should_split = False
-            split_reason = ""
 
-            # 1. Natural silence gap between words (speaker paused)
-            if gap >= pause_threshold and (prev_word["end"] - block_start_time) >= min_duration:
+            # RULE 1: Unconditional Pause / Silence Gap
+            # When speaker stops for >= pause_threshold (e.g. 0.4s), NEVER merge across the silence!
+            if gap >= pause_threshold:
                 should_split = True
-                split_reason = "pause"
 
-            # 2. Hard sentence ending punctuation on previous word
-            elif any(prev_word["word"].endswith(p) for p in hard_punctuation) and (prev_word["end"] - block_start_time) >= min_duration:
+            # RULE 2: Hard sentence-ending punctuation (. ? !) with even small pause or reasonable length
+            elif any(prev_word["word"].endswith(p) for p in hard_punctuation) and (gap >= 0.20 or tentative_len >= 30):
                 should_split = True
-                split_reason = "sentence_end"
 
-            # 3. Exceeds max character capacity per subtitle screen
+            # RULE 3: Soft punctuation (, ;) followed by a moderate pause (>= 0.30s)
+            elif any(prev_word["word"].endswith(p) for p in soft_punctuation) and gap >= 0.30:
+                should_split = True
+
+            # RULE 4: Exceeds character capacity (e.g. > 80 chars on screen)
             elif tentative_len > max_total_chars:
                 should_split = True
-                split_reason = "max_chars"
 
-            # 4. Exceeds maximum display duration (screen would stay up too long)
+            # RULE 5: Exceeds maximum display duration (e.g. > 6.5s)
             elif current_duration > max_duration:
                 should_split = True
-                split_reason = "max_duration"
 
             if should_split:
-                # Seal current block
                 raw_text = " ".join([w["word"] for w in current_block_words])
                 formatted_text = cls.format_line_breaks(raw_text, max_cpl=max_cpl, max_lines=max_lines)
                 seg_start = current_block_words[0]["start"]
-                seg_end = current_block_words[-1]["end"]
-
-                # Ensure minimum duration for readability if possible
-                if seg_end - seg_start < min_duration:
-                    seg_end = min(seg_start + min_duration, word_start)
+                seg_end = current_block_words[-1]["end"]  # Exactly when speech stopped
 
                 segments.append({
                     "sequence_number": len(segments) + 1,
@@ -138,21 +133,16 @@ class SmartSubtitleSegmenter:
                     "speaker": "Speaker 1"
                 })
 
-                # Start new block
                 current_block_words = [word_item]
-                block_start_time = word_start
             else:
                 current_block_words.append(word_item)
 
-        # Flush remaining words in buffer
+        # Flush remaining words
         if current_block_words:
             raw_text = " ".join([w["word"] for w in current_block_words])
             formatted_text = cls.format_line_breaks(raw_text, max_cpl=max_cpl, max_lines=max_lines)
             seg_start = current_block_words[0]["start"]
             seg_end = current_block_words[-1]["end"]
-            
-            if seg_end - seg_start < min_duration:
-                seg_end = round(seg_start + min_duration, 3)
 
             segments.append({
                 "sequence_number": len(segments) + 1,
@@ -171,14 +161,14 @@ class SmartSubtitleSegmenter:
         raw_segments: List[Dict[str, Any]],
         max_cpl: int = 40,
         max_lines: int = 2,
-        min_duration: float = 1.0,
-        max_duration: float = 7.0,
-        max_cps: float = 20.0
+        min_duration: float = 0.8,
+        max_duration: float = 6.5,
+        max_cps: float = 20.0,
+        pause_threshold: float = 0.40
     ) -> List[Dict[str, Any]]:
         """
-        Fallback segmenter when word-level timestamps are sparse or from raw segments.
+        Segmenter handling raw Whisper segments with gap detection.
         """
-        # Collect all words from raw segments if available
         all_words = []
         for s in raw_segments:
             if s.get("words"):
@@ -191,24 +181,65 @@ class SmartSubtitleSegmenter:
                 max_lines=max_lines,
                 min_duration=min_duration,
                 max_duration=max_duration,
-                max_cps=max_cps
+                max_cps=max_cps,
+                pause_threshold=pause_threshold
             )
 
-        # If no word timestamps, segment directly by sentence / character rules
+        # Fallback: Process segment-by-segment using segment start/end gaps
         result = []
-        seq = 1
-        for s in raw_segments:
-            text = s.get("text", "").strip()
+        current_batch = []
+        batch_start = 0.0
+
+        for i, seg in enumerate(raw_segments):
+            text = seg.get("text", "").strip()
             if not text:
                 continue
-            formatted = cls.format_line_breaks(text, max_cpl=max_cpl, max_lines=max_lines)
+
+            s_start = seg.get("start", 0.0)
+            s_end = seg.get("end", 0.0)
+
+            if not current_batch:
+                current_batch.append(seg)
+                batch_start = s_start
+                continue
+
+            prev_seg = current_batch[-1]
+            gap = s_start - prev_seg.get("end", 0.0)
+            batch_text = " ".join([s.get("text", "") for s in current_batch])
+            dur = s_end - batch_start
+
+            should_split = False
+            if gap >= pause_threshold:
+                should_split = True
+            elif len(batch_text) + len(text) > (max_cpl * max_lines):
+                should_split = True
+            elif dur > max_duration:
+                should_split = True
+
+            if should_split:
+                b_text = " ".join([s.get("text", "") for s in current_batch])
+                result.append({
+                    "sequence_number": len(result) + 1,
+                    "start_time": round(current_batch[0].get("start", 0.0), 3),
+                    "end_time": round(current_batch[-1].get("end", 0.0), 3),
+                    "text": cls.format_line_breaks(b_text, max_cpl=max_cpl, max_lines=max_lines),
+                    "words": [],
+                    "speaker": "Speaker 1"
+                })
+                current_batch = [seg]
+                batch_start = s_start
+            else:
+                current_batch.append(seg)
+
+        if current_batch:
+            b_text = " ".join([s.get("text", "") for s in current_batch])
             result.append({
-                "sequence_number": seq,
-                "start_time": s.get("start", 0.0),
-                "end_time": s.get("end", 0.0),
-                "text": formatted,
+                "sequence_number": len(result) + 1,
+                "start_time": round(current_batch[0].get("start", 0.0), 3),
+                "end_time": round(current_batch[-1].get("end", 0.0), 3),
+                "text": cls.format_line_breaks(b_text, max_cpl=max_cpl, max_lines=max_lines),
                 "words": [],
                 "speaker": "Speaker 1"
             })
-            seq += 1
+
         return result

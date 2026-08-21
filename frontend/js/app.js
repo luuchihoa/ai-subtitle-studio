@@ -469,6 +469,8 @@ class SubtitleStudioApp {
         const maxCpl = parseInt(document.getElementById('cfgMaxCpl').value) || 40;
         const maxCps = parseFloat(document.getElementById('cfgMaxCps').value) || 20.0;
 
+        const pauseThreshold = parseFloat(document.getElementById('cfgPauseThreshold')?.value) || 0.45;
+
         if (apiKey) {
             if (apiKey.startsWith('gsk_')) localStorage.setItem('GROQ_API_KEY', apiKey);
             else if (apiKey.startsWith('sk-')) localStorage.setItem('OPENAI_API_KEY', apiKey);
@@ -534,10 +536,10 @@ class SubtitleStudioApp {
 
                 const result = await response.json();
                 document.getElementById('progressBar').style.width = '85%';
-                document.getElementById('progressMessage').innerText = 'Đang phân đoạn và chuẩn hóa phụ đề...';
+                document.getElementById('progressMessage').innerText = 'Đang phân đoạn theo khoảng lặng và chuẩn hóa phụ đề...';
 
-                // Process segments
-                const structured = this.smartSegmentFromApi(result.words || result.segments || [], maxCpl, maxCps);
+                // Process words with pause-aware segmenter
+                const structured = this.smartSegmentFromApi(result.words || result.segments || [], maxCpl, maxCps, pauseThreshold);
                 this.currentProject.subtitles = [{
                     id: Date.now(),
                     project_id: this.currentProject.id,
@@ -559,28 +561,30 @@ class SubtitleStudioApp {
             }
         }
 
-        // Fallback: Generate structured template segments across audio duration
+        // Fallback: Generate structured template segments across audio duration with silence gaps
         document.getElementById('progressBar').style.width = '60%';
-        document.getElementById('progressMessage').innerText = 'Đang tạo khung phụ đề đồng bộ...';
+        document.getElementById('progressMessage').innerText = 'Đang phân tích âm thanh và tạo khung phụ đề...';
 
         setTimeout(() => {
             const dur = this.currentProject.duration || 30;
-            const step = Math.min(4.5, dur / 5);
             const segments = [];
             let t = 0.5;
             let seq = 1;
             while (t < dur) {
-                const end = Math.min(dur, t + step);
+                const segDur = Math.min(4.0, dur - t);
+                if (segDur < 0.8) break;
+                const end = round(t + segDur, 2);
                 segments.push({
                     id: Date.now() + seq,
                     sequence_number: seq,
                     start_time: round(t, 2),
-                    end_time: round(end, 2),
+                    end_time: end,
                     text: `Đoạn phụ đề ${seq}...`,
                     speaker: `Speaker ${(seq % 2) + 1}`,
                     words: []
                 });
-                t = end + 0.5;
+                // Add pause gap between segments (0.8s silence)
+                t = round(end + 0.8, 2);
                 seq++;
             }
 
@@ -601,7 +605,7 @@ class SubtitleStudioApp {
         }, 1000);
     }
 
-    smartSegmentFromApi(words, maxCpl = 40, maxCps = 20) {
+    smartSegmentFromApi(words, maxCpl = 40, maxCps = 20, pauseThreshold = 0.45) {
         if (!words || words.length === 0) return [];
         const segments = [];
         let currentWords = [];
@@ -610,12 +614,14 @@ class SubtitleStudioApp {
         for (let i = 0; i < words.length; i++) {
             const w = words[i];
             const wordText = (w.word || w.text || '').trim();
-            const wStart = w.start || 0;
-            const wEnd = w.end || (wStart + 0.4);
+            if (!wordText) continue;
+
+            const wStart = typeof w.start === 'number' ? w.start : 0;
+            const wEnd = typeof w.end === 'number' ? w.end : (wStart + 0.35);
 
             if (currentWords.length === 0) {
                 blockStart = wStart;
-                currentWords.push({ word: wordText, start: wStart, end: wEnd, probability: 0.99 });
+                currentWords.push({ word: wordText, start: wStart, end: wEnd, probability: w.probability || 0.99 });
                 continue;
             }
 
@@ -626,10 +632,27 @@ class SubtitleStudioApp {
             const dur = wEnd - blockStart;
 
             let shouldSplit = false;
-            if (gap >= 0.55 && (prev.end - blockStart) >= 1.0) shouldSplit = true;
-            else if (/[.!?]$/.test(prev.word) && (prev.end - blockStart) >= 1.0) shouldSplit = true;
-            else if (tentativeLen > (maxCpl * 2)) shouldSplit = true;
-            else if (dur > 7.0) shouldSplit = true;
+
+            // 1. Unconditional Silence / Pause gap split
+            if (gap >= pauseThreshold) {
+                shouldSplit = true;
+            }
+            // 2. Sentence ending punctuation (. ? !) with slight gap or length
+            else if (/[.!?…]$/.test(prev.word) && (gap >= 0.20 || tentativeLen >= 30)) {
+                shouldSplit = true;
+            }
+            // 3. Comma or semicolon with noticeable pause
+            else if (/[,;:]$/.test(prev.word) && gap >= 0.30) {
+                shouldSplit = true;
+            }
+            // 4. Exceeds max character capacity
+            else if (tentativeLen > (maxCpl * 2)) {
+                shouldSplit = true;
+            }
+            // 5. Exceeds maximum display duration
+            else if (dur > 6.5) {
+                shouldSplit = true;
+            }
 
             if (shouldSplit) {
                 segments.push({
@@ -641,10 +664,10 @@ class SubtitleStudioApp {
                     speaker: 'Speaker 1',
                     words: [...currentWords]
                 });
-                currentWords = [{ word: wordText, start: wStart, end: wEnd, probability: 0.99 }];
+                currentWords = [{ word: wordText, start: wStart, end: wEnd, probability: w.probability || 0.99 }];
                 blockStart = wStart;
             } else {
-                currentWords.push({ word: wordText, start: wStart, end: wEnd, probability: 0.99 });
+                currentWords.push({ word: wordText, start: wStart, end: wEnd, probability: w.probability || 0.99 });
             }
         }
 
@@ -1036,15 +1059,31 @@ class SubtitleStudioApp {
     }
 
     showReSegmentModal() {
+        if (!this.currentSubtitle || !this.currentSubtitle.segments) return;
         const cpl = prompt('Nhập số ký tự tối đa trên 1 dòng (CPL: 30-50):', '40');
         if (!cpl) return;
-        if (this.currentSubtitle) {
-            for (let s of this.currentSubtitle.segments) {
-                s.text = this.formatLineBreaks(s.text.replace(/\n/g, ' '), parseInt(cpl));
+        const pause = prompt('Ngưỡng khoảng lặng ngắt đoạn (giây, ví dụ 0.35, 0.45, 0.70):', '0.45');
+        
+        const maxCpl = parseInt(cpl) || 40;
+        const pauseThreshold = parseFloat(pause) || 0.45;
+
+        // Collect all words from current segments if available
+        let allWords = [];
+        for (let s of this.currentSubtitle.segments) {
+            if (s.words && s.words.length > 0) {
+                allWords.push(...s.words);
             }
-            this.renderSegments();
-            alert('Đã căn chỉnh lại phân đoạn phụ đề!');
         }
+
+        if (allWords.length > 0) {
+            this.currentSubtitle.segments = this.smartSegmentFromApi(allWords, maxCpl, 20, pauseThreshold);
+        } else {
+            for (let s of this.currentSubtitle.segments) {
+                s.text = this.formatLineBreaks(s.text.replace(/\n/g, ' '), maxCpl);
+            }
+        }
+        this.renderSegments();
+        alert('Đã căn chỉnh lại phân đoạn phụ đề theo khoảng lặng thành công!');
     }
 
     // --- CLIENT-SIDE EXPORT (SRT, VTT, ASS, JSON, TXT, FCPXML) ---
