@@ -1,0 +1,17 @@
+{
+  "name": "AI Subtitle Studio",
+  "short_name": "Subtitle Studio",
+  "description": "Studio tạo và quản lý phụ đề AI chuẩn xác",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "./index.html",
+  "display": "standalone",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a"
+}
