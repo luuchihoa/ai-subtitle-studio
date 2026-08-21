@@ -43,6 +43,24 @@ class TestSubtitlePipeline(unittest.TestCase):
         self.assertEqual(segments[0]["start_time"], 0.5)
         self.assertIn("Xin chào các bạn.", segments[0]["text"])
 
+    def test_complex_dialogue_segmentation(self):
+        complex_text = "Có lời Đức Chúa phán với tôi rằng : Hỡi con người, hãy tuyên sấm hạch tội các mục tử chăn dắt Ít-ra-en, hãy tuyên sấm."
+        words = []
+        t = 0.0
+        for w in complex_text.split():
+            words.append({"word": w, "start": round(t, 2), "end": round(t + 0.3, 2), "probability": 0.99})
+            t += 0.35
+
+        segments = SmartSubtitleSegmenter.segment_words(words, max_cpl=45, max_lines=2)
+        self.assertEqual(len(segments), 2)
+        # Verify Screen 1 is introductory clause
+        self.assertIn("Có lời Đức Chúa phán với tôi rằng:", segments[0]["text"])
+        # Verify Screen 2 has max 2 lines and does NOT break 'hãy' away from 'tuyên sấm'
+        self.assertNotIn("hãy\n", segments[1]["text"])
+        self.assertNotIn("\nsấm.", segments[1]["text"])
+        self.assertLessEqual(len(segments[1]["text"].split("\n")), 2)
+
+
     def test_post_processor_hallucinations(self):
         hallucinated_text = "Xin chào các bạn đã đến kênh. Xin chào các bạn đã đến kênh. Xin chào các bạn đã đến kênh."
         cleaned = SubtitlePostProcessor.remove_hallucination_loops(hallucinated_text)

@@ -605,91 +605,253 @@ class SubtitleStudioApp {
         }, 1000);
     }
 
+    // --- SYNTACTIC & LINGUISTIC LINE BREAKER (NETFLIX / BBC BROADCAST STANDARDS) ---
+    static DANGLING_END_WORDS = new Set([
+        // Imperatives, Modals & Auxiliaries
+        "hãy", "đã", "đang", "sẽ", "phải", "không", "chưa", "chẳng", "được", "bị",
+        "muốn", "cần", "nên", "dám", "toan", "định", "có", "là", "hết", "chớ", "đừng",
+        // Determiners, Quantifiers & Classifiers
+        "các", "những", "mỗi", "mọi", "từng", "cả", "con", "người", "cái", "chiếc",
+        "này", "nọ", "kia", "đó", "đây", "ấy",
+        // Prepositions & Connectors
+        "với", "cho", "về", "ở", "tại", "của", "và", "hoặc", "nhưng", "bởi", "do",
+        "để", "rằng", "như", "nếu", "thì", "mà", "hỡi", "kìa", "vì", "từ", "lên", "xuống",
+        // English
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "with",
+        "of", "that", "this", "is", "are", "was", "were", "will", "would", "shall", "should", "let"
+    ]);
+
+    evaluateLineSplitPenalty(line1Words, line2Words, maxCpl = 40) {
+        if (!line1Words.length || !line2Words.length) return 99999;
+        const line1 = line1Words.join(' ').trim();
+        const line2 = line2Words.join(' ').trim();
+        const len1 = line1.length;
+        const len2 = line2.length;
+
+        let penalty = 0;
+        if (len1 > maxCpl) penalty += (len1 - maxCpl) * 60;
+        if (len2 > maxCpl) penalty += (len2 - maxCpl) * 60;
+
+        // Balance penalty
+        penalty += Math.abs(len1 - len2) * 1.5;
+
+        // Anti-Orphan penalty: Line 2 with 1 or 2 words / short text
+        if (line2Words.length === 1) penalty += 1000;
+        else if (line2Words.length === 2 && len2 < 12) penalty += 500;
+
+        // Dangling word penalty: Line 1 ending in auxiliary/determiner/preposition
+        const lastWordClean = line1Words[line1Words.length - 1].toLowerCase().replace(/^[.,:;!?"“”'()[\]]+|[.,:;!?"“”'()[\]]+$/g, '');
+        if (SubtitleStudioApp.DANGLING_END_WORDS.has(lastWordClean)) penalty += 700;
+
+        // First word of Line 2 being loose punctuation
+        const firstWordClean = line2Words[0].toLowerCase().replace(/^[.,:;!?"“”'()[\]]+|[.,:;!?"“”'()[\]]+$/g, '');
+        if ([',', ';', ':', '.'].includes(firstWordClean)) penalty += 1000;
+
+        // Punctuation bonuses
+        const lastChar = line1[line1.length - 1];
+        if ([':', ';', '—', '-'].includes(lastChar)) penalty -= 300;
+        else if ([',', '"', '”'].includes(lastChar)) penalty -= 180;
+
+        if (lastWordClean === 'rằng' || line1.endsWith('rằng:') || line1.endsWith('rằng,')) penalty -= 250;
+
+        return penalty;
+    }
+
+    formatLineBreaks(text, maxCpl = 40) {
+        const cleanText = text.replace(/\s+([,.:;?!])/g, '$1').trim();
+        const words = cleanText.split(/\s+/);
+        if (!words.length) return '';
+        if (cleanText.length <= maxCpl) return cleanText;
+
+        let bestSplitIdx = -1;
+        let minPenalty = Infinity;
+
+        for (let i = 1; i < words.length; i++) {
+            const l1 = words.slice(0, i);
+            const l2 = words.slice(i);
+            const penalty = this.evaluateLineSplitPenalty(l1, l2, maxCpl);
+            if (penalty < minPenalty) {
+                minPenalty = penalty;
+                bestSplitIdx = i;
+            }
+        }
+
+        if (bestSplitIdx !== -1) {
+            return words.slice(0, bestSplitIdx).join(' ') + '\n' + words.slice(bestSplitIdx).join(' ');
+        }
+
+        const half = Math.ceil(words.length / 2);
+        return words.slice(0, half).join(' ') + '\n' + words.slice(half).join(' ');
+    }
+
+    findBestClauseSplit(words, maxCharsPerScreen = 80) {
+        if (words.length < 4) return -1;
+        let bestIdx = -1;
+        let bestScore = -Infinity;
+
+        for (let i = 2; i < words.length - 1; i++) {
+            const wPrev = (words[i - 1].word || '').trim();
+            const wCurr = (words[i].word || '').trim();
+            const len1 = words.slice(0, i).map(x => x.word).join(' ').length;
+            const len2 = words.slice(i).map(x => x.word).join(' ').length;
+
+            let score = 0;
+            if (wPrev.endsWith(':') || ['rằng:', 'rằng'].includes(wPrev.toLowerCase())) score += 600;
+            else if ([';', '—', '-', '"', '”'].some(p => wPrev.endsWith(p))) score += 350;
+            else if (wPrev.endsWith(',') && ['hỡi', 'thưa', 'kính', 'nhưng', 'để', 'khi', 'vì', 'mà', 'hãy'].includes(wCurr.toLowerCase())) score += 300;
+            else if (wPrev.endsWith(',')) score += 150;
+
+            score += (100 - Math.abs(len1 - len2));
+
+            const wPrevClean = wPrev.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '');
+            if (SubtitleStudioApp.DANGLING_END_WORDS.has(wPrevClean)) score -= 700;
+
+            if (i <= 1 || (words.length - i) <= 1) score -= 1000;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestIdx = i;
+            }
+        }
+        return bestIdx;
+    }
+
     smartSegmentFromApi(words, maxCpl = 40, maxCps = 20, pauseThreshold = 0.45) {
         if (!words || words.length === 0) return [];
+        
+        // Step 1: Merge lone punctuation tokens (: , . ; ! ?) into previous words
+        const cleanWords = [];
+        for (let w of words) {
+            const wText = (w.word || w.text || '').trim();
+            if (!wText) continue;
+            if ([':', ',', '.', ';', '!', '?', '…'].includes(wText) && cleanWords.length > 0) {
+                cleanWords[cleanWords.length - 1].word += wText;
+                cleanWords[cleanWords.length - 1].end = w.end || cleanWords[cleanWords.length - 1].end;
+            } else {
+                cleanWords.push({
+                    word: wText,
+                    start: typeof w.start === 'number' ? w.start : 0,
+                    end: typeof w.end === 'number' ? w.end : ((w.start || 0) + 0.35),
+                    probability: w.probability || 0.99
+                });
+            }
+        }
+
+        if (cleanWords.length === 0) return [];
+
         const segments = [];
         let currentWords = [];
-        let blockStart = 0;
+        const maxTotalChars = maxCpl * 2; // Strict 2 lines max
 
-        for (let i = 0; i < words.length; i++) {
-            const w = words[i];
-            const wordText = (w.word || w.text || '').trim();
-            if (!wordText) continue;
-
-            const wStart = typeof w.start === 'number' ? w.start : 0;
-            const wEnd = typeof w.end === 'number' ? w.end : (wStart + 0.35);
+        for (let i = 0; i < cleanWords.length; i++) {
+            const wordItem = cleanWords[i];
+            const wordStr = wordItem.word;
+            const wStart = wordItem.start;
+            const wEnd = wordItem.end;
 
             if (currentWords.length === 0) {
-                blockStart = wStart;
-                currentWords.push({ word: wordText, start: wStart, end: wEnd, probability: w.probability || 0.99 });
+                currentWords.push(wordItem);
                 continue;
             }
 
             const prev = currentWords[currentWords.length - 1];
             const gap = wStart - prev.end;
+            const blockStart = currentWords[0].start;
             const currentText = currentWords.map(x => x.word).join(' ');
-            const tentativeLen = currentText.length + 1 + wordText.length;
+            const tentativeLen = currentText.length + 1 + wordStr.length;
             const dur = wEnd - blockStart;
 
             let shouldSplit = false;
 
-            // 1. Unconditional Silence / Pause gap split
+            // 1. Unconditional Silence / Pause Gap
             if (gap >= pauseThreshold) {
                 shouldSplit = true;
             }
-            // 2. Sentence ending punctuation (. ? !) with slight gap or length
+            // 2. Hard sentence ending (. ? ! …)
             else if (/[.!?…]$/.test(prev.word) && (gap >= 0.20 || tentativeLen >= 30)) {
                 shouldSplit = true;
             }
-            // 3. Comma or semicolon with noticeable pause
-            else if (/[,;:]$/.test(prev.word) && gap >= 0.30) {
+            // 3. Dialogue introduction (: or rằng :)
+            else if ((prev.word.endsWith(':') || ['rằng:', 'rằng'].includes(prev.word.toLowerCase())) && tentativeLen >= 25) {
                 shouldSplit = true;
             }
-            // 4. Exceeds max character capacity
-            else if (tentativeLen > (maxCpl * 2)) {
-                shouldSplit = true;
-            }
-            // 5. Exceeds maximum display duration
-            else if (dur > 6.5) {
-                shouldSplit = true;
+            // 4. Exceeds max screen capacity or max duration
+            else if (tentativeLen > maxTotalChars || dur > 6.5) {
+                const remaining = cleanWords.length - i;
+                if (remaining > 1) shouldSplit = true;
             }
 
             if (shouldSplit) {
+                // Check if current block should be split at dialogue/clause boundary
+                const blockLen = currentWords.map(x => x.word).join(' ').length;
+                if (blockLen > maxTotalChars) {
+                    const clauseIdx = this.findBestClauseSplit(currentWords, maxTotalChars);
+                    if (clauseIdx !== -1) {
+                        const sub1 = currentWords.slice(0, clauseIdx);
+                        const raw1 = sub1.map(x => x.word).join(' ');
+                        segments.push({
+                            id: Date.now() + segments.length + 1,
+                            sequence_number: segments.length + 1,
+                            start_time: round(sub1[0].start, 3),
+                            end_time: round(sub1[sub1.length - 1].end, 3),
+                            text: this.formatLineBreaks(raw1, maxCpl),
+                            speaker: 'Speaker 1',
+                            words: [...sub1]
+                        });
+                        currentWords = currentWords.slice(clauseIdx);
+                    }
+                }
+
+                const rawText = currentWords.map(x => x.word).join(' ');
                 segments.push({
                     id: Date.now() + segments.length + 1,
                     sequence_number: segments.length + 1,
                     start_time: round(currentWords[0].start, 3),
                     end_time: round(currentWords[currentWords.length - 1].end, 3),
-                    text: this.formatLineBreaks(currentWords.map(x => x.word).join(' '), maxCpl),
+                    text: this.formatLineBreaks(rawText, maxCpl),
                     speaker: 'Speaker 1',
                     words: [...currentWords]
                 });
-                currentWords = [{ word: wordText, start: wStart, end: wEnd, probability: w.probability || 0.99 }];
-                blockStart = wStart;
+
+                currentWords = [wordItem];
             } else {
-                currentWords.push({ word: wordText, start: wStart, end: wEnd, probability: w.probability || 0.99 });
+                currentWords.push(wordItem);
             }
         }
 
         if (currentWords.length > 0) {
+            const blockLen = currentWords.map(x => x.word).join(' ').length;
+            if (blockLen > maxTotalChars) {
+                const clauseIdx = this.findBestClauseSplit(currentWords, maxTotalChars);
+                if (clauseIdx !== -1) {
+                    const sub1 = currentWords.slice(0, clauseIdx);
+                    const raw1 = sub1.map(x => x.word).join(' ');
+                    segments.push({
+                        id: Date.now() + segments.length + 1,
+                        sequence_number: segments.length + 1,
+                        start_time: round(sub1[0].start, 3),
+                        end_time: round(sub1[sub1.length - 1].end, 3),
+                        text: this.formatLineBreaks(raw1, maxCpl),
+                        speaker: 'Speaker 1',
+                        words: [...sub1]
+                    });
+                    currentWords = currentWords.slice(clauseIdx);
+                }
+            }
+
+            const rawText = currentWords.map(x => x.word).join(' ');
             segments.push({
                 id: Date.now() + segments.length + 1,
                 sequence_number: segments.length + 1,
                 start_time: round(currentWords[0].start, 3),
                 end_time: round(currentWords[currentWords.length - 1].end, 3),
-                text: this.formatLineBreaks(currentWords.map(x => x.word).join(' '), maxCpl),
+                text: this.formatLineBreaks(rawText, maxCpl),
                 speaker: 'Speaker 1',
                 words: [...currentWords]
             });
         }
-        return segments;
-    }
 
-    formatLineBreaks(text, maxCpl = 40) {
-        const words = text.split(/\s+/);
-        if (text.length <= maxCpl || words.length <= 3) return text;
-        const half = Math.ceil(words.length / 2);
-        return words.slice(0, half).join(' ') + '\n' + words.slice(half).join(' ');
+        return segments;
     }
 
     pollJobProgress(jobId) {
