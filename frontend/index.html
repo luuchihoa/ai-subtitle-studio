@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Subtitle Studio - Tạo & Quản lý Phụ đề Thông minh</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        },
+                        dark: {
+                            bg: '#0f172a',
+                            card: '#1e293b',
+                            border: '#334155',
+                            hover: '#283548'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-dark-bg text-slate-100 min-h-screen flex flex-col font-sans antialiased select-none">
+
+    <!-- TOP NAVBAR -->
+    <header class="h-16 border-b border-dark-border bg-dark-card/80 backdrop-blur px-6 flex items-center justify-between sticky top-0 z-40">
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="app.showProjectListModal()">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                    <i class="fa-solid fa-closed-captioning text-xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
+                        AI Subtitle Studio
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-medium border border-blue-500/30">v1.0 Pro</span>
+                    </h1>
+                    <p id="currentProjectTitle" class="text-xs text-slate-400 truncate max-w-xs">Chưa chọn dự án</p>
+                </div>
+            </div>
+
+            <!-- Subtitle Track Selector -->
+            <div id="trackSelectorContainer" class="hidden items-center space-x-2 pl-4 border-l border-dark-border">
+                <span class="text-xs text-slate-400">Track:</span>
+                <select id="trackSelect" onchange="app.changeTrack(this.value)" class="bg-dark-bg border border-dark-border text-xs rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-blue-500">
+                </select>
+            </div>
+        </div>
+
+        <!-- ACTION BUTTONS -->
+        <div class="flex items-center space-x-3">
+            <button onclick="app.showUploadModal()" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-dark-border hover:bg-slate-700 text-slate-200 transition flex items-center gap-2">
+                <i class="fa-solid fa-plus text-blue-400"></i> File mới
+            </button>
+            <button id="btnAiTranscribe" onclick="app.showTranscribeModal()" class="hidden px-4 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/20 transition flex items-center gap-2">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Tạo phụ đề AI
+            </button>
+            <button id="btnTranslate" onclick="app.showTranslateModal()" class="hidden px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-dark-border hover:bg-slate-700 text-slate-200 transition flex items-center gap-2">
+                <i class="fa-solid fa-language text-purple-400"></i> Dịch thuật
+            </button>
+            <button id="btnReSegment" onclick="app.showReSegmentModal()" class="hidden px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-dark-border hover:bg-slate-700 text-slate-200 transition flex items-center gap-2">
+                <i class="fa-solid fa-sliders text-amber-400"></i> Căn chỉnh lại
+            </button>
+            <button id="btnExport" onclick="app.showExportModal()" class="hidden px-4 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-2 shadow-md shadow-emerald-500/20">
+                <i class="fa-solid fa-download"></i> Xuất file
+            </button>
+        </div>
+    </header>
+
+    <!-- EMPTY STATE (No Project Selected) -->
+    <main id="emptyState" class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+        <div class="w-20 h-20 rounded-3xl bg-dark-card border border-dark-border flex items-center justify-center mb-6 shadow-xl text-blue-500">
+            <i class="fa-solid fa-wave-square text-3xl"></i>
+        </div>
+        <h2 class="text-xl font-bold text-slate-200 mb-2">Bắt đầu tạo phụ đề chuẩn xác</h2>
+        <p class="text-sm text-slate-400 max-w-md mb-6 leading-relaxed">
+            Hỗ trợ file âm thanh (MP3, WAV, M4A, FLAC) và video (MP4, MOV, WebM). Nhận diện giọng nói chuẩn từng từ, lọc tạp âm và phân tách người nói.
+        </p>
+        <div class="flex gap-4">
+            <button onclick="app.showUploadModal()" class="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold shadow-lg shadow-blue-500/30 transition flex items-center gap-2">
+                <i class="fa-solid fa-arrow-up-from-bracket"></i> Tải lên file Audio/Video
+            </button>
+            <button onclick="app.showProjectListModal()" class="px-5 py-2.5 rounded-xl bg-dark-card hover:bg-slate-800 border border-dark-border text-slate-300 text-sm font-medium transition">
+                <i class="fa-solid fa-folder-open mr-1.5"></i> Danh sách dự án
+            </button>
+        </div>
+    </main>
+
+    <!-- WORKSPACE (Loaded Project) -->
+    <main id="workspace" class="flex-1 hidden grid grid-cols-12 overflow-hidden">
+        
+        <!-- LEFT PANEL: MEDIA & WAVEFORM TIMELINE (5 Cols) -->
+        <section class="col-span-5 border-r border-dark-border flex flex-col bg-slate-950/40 p-4 space-y-4 overflow-y-auto">
+            
+            <!-- Video / Audio Preview Container -->
+            <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-dark-border shadow-2xl flex items-center justify-center group">
+                <video id="videoPlayer" class="w-full h-full object-contain hidden" playsinline></video>
+                <audio id="audioPlayer" class="hidden"></audio>
+                
+                <!-- Placeholder for pure Audio -->
+                <div id="audioVisualizerPlaceholder" class="flex flex-col items-center justify-center text-slate-500">
+                    <div class="w-16 h-16 rounded-full bg-dark-card border border-dark-border flex items-center justify-center text-blue-400 mb-3 animate-pulse">
+                        <i class="fa-solid fa-music text-2xl"></i>
+                    </div>
+                    <span id="audioTrackName" class="text-xs text-slate-400 font-medium px-4 text-center truncate max-w-xs">Audio Player</span>
+                </div>
+
+                <!-- Real-time Subtitle Overlay on Video Screen -->
+                <div id="subtitleOverlay" class="absolute bottom-6 left-4 right-4 text-center pointer-events-none transition-all duration-150">
+                    <span id="subtitleOverlayText" class="inline-block bg-black/80 text-white font-semibold text-sm md:text-base px-3.5 py-1.5 rounded-lg shadow-lg border border-white/10 max-w-[90%] whitespace-pre-line leading-snug"></span>
+                </div>
+            </div>
+
+            <!-- PLAYER CONTROLS & TIMELINE -->
+            <div class="bg-dark-card border border-dark-border rounded-xl p-3 space-y-3">
+                <div class="flex items-center justify-between text-xs text-slate-400 font-mono">
+                    <span id="currentTimeLabel">00:00:00.000</span>
+                    <span id="totalDurationLabel">00:00:00.000</span>
+                </div>
+
+                <!-- Custom Waveform Canvas -->
+                <div class="relative h-20 bg-slate-950 rounded-lg overflow-hidden border border-dark-border/80 cursor-pointer" id="waveformContainer" onclick="app.handleWaveformClick(event)">
+                    <canvas id="waveformCanvas" class="w-full h-full block"></canvas>
+                    <!-- Playhead Cursor Line -->
+                    <div id="waveformPlayhead" class="absolute top-0 bottom-0 w-0.5 bg-red-500 shadow-md shadow-red-500 pointer-events-none" style="left: 0%;"></div>
+                </div>
+
+                <!-- Playback Buttons -->
+                <div class="flex items-center justify-between pt-1">
+                    <div class="flex items-center space-x-2">
+                        <button onclick="app.seekRelative(-5)" class="w-8 h-8 rounded-lg hover:bg-slate-700 text-slate-300 flex items-center justify-center transition" title="Lùi 5s">
+                            <i class="fa-solid fa-rotate-left text-xs"></i>
+                        </button>
+                        <button id="btnPlayPause" onclick="app.togglePlay()" class="w-10 h-10 rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/20 transition" title="Phát / Tạm dừng (Space)">
+                            <i class="fa-solid fa-play text-sm"></i>
+                        </button>
+                        <button onclick="app.seekRelative(5)" class="w-8 h-8 rounded-lg hover:bg-slate-700 text-slate-300 flex items-center justify-center transition" title="Tiến 5s">
+                            <i class="fa-solid fa-rotate-right text-xs"></i>
+                        </button>
+                    </div>
+
+                    <!-- Playback Speed -->
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs text-slate-400"><i class="fa-solid fa-gauge-high mr-1"></i>Tốc độ:</span>
+                        <select id="playbackSpeedSelect" onchange="app.setPlaybackSpeed(this.value)" class="bg-dark-bg border border-dark-border text-xs rounded-lg px-2 py-1 text-slate-200">
+                            <option value="0.5">0.5x</option>
+                            <option value="0.75">0.75x</option>
+                            <option value="1.0" selected>1.0x</option>
+                            <option value="1.25">1.25x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="2.0">2.0x</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Broadcast Standards Inspector (CPS & CPL Guideline Monitor) -->
+            <div class="bg-dark-card/50 border border-dark-border/60 rounded-xl p-3.5 space-y-2">
+                <h4 class="text-xs font-bold text-slate-300 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-halved text-blue-400 mr-1.5"></i>Kiểm chuẩn phát sóng</span>
+                    <span id="statSegmentCount" class="text-[11px] font-normal text-slate-400">0 đoạn phụ đề</span>
+                </h4>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-dark-bg/60 p-2 rounded-lg border border-dark-border/40">
+                        <span class="text-slate-400 block text-[10px]">Giới hạn CPL (Ký tự/dòng)</span>
+                        <span class="font-semibold text-emerald-400">Tối đa 40 ký tự</span>
+                    </div>
+                    <div class="bg-dark-bg/60 p-2 rounded-lg border border-dark-border/40">
+                        <span class="text-slate-400 block text-[10px]">Tốc độ đọc CPS</span>
+                        <span class="font-semibold text-blue-400">&le; 20 ký tự/giây</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT PANEL: INTERACTIVE SUBTITLE EDITOR (7 Cols) -->
+        <section class="col-span-7 flex flex-col bg-dark-bg h-full overflow-hidden">
+            
+            <!-- Editor Toolbar -->
+            <div class="p-3.5 border-b border-dark-border bg-dark-card/40 flex items-center justify-between">
+                <div class="flex items-center space-x-3 flex-1">
+                    <div class="relative flex-1 max-w-xs">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-400"></i>
+                        <input type="text" id="searchInput" oninput="app.filterSegments(this.value)" placeholder="Tìm kiếm phụ đề..." class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-dark-bg border border-dark-border text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <button onclick="app.addNewSegmentAtCurrentTime()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/30 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus"></i> Thêm đoạn tại Playhead
+                    </button>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <button onclick="app.saveAllSegments()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-dark-border hover:bg-slate-700 text-slate-200 transition flex items-center gap-1.5" title="Lưu toàn bộ thay đổi">
+                        <i class="fa-solid fa-floppy-disk text-blue-400"></i> Lưu
+                    </button>
+                </div>
+            </div>
+
+            <!-- Subtitle Segments List -->
+            <div id="segmentsListContainer" class="flex-1 p-4 overflow-y-auto space-y-3">
+                <!-- Segment cards will be dynamically injected here -->
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL: UPLOAD FILE -->
+    <div id="modalUpload" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-dark-card border border-dark-border rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-cloud-arrow-up text-blue-400"></i> Tải lên file Audio/Video
+                </h3>
+                <button onclick="app.closeModal('modalUpload')" class="text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="uploadForm" onsubmit="app.handleUploadSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1.5">Tên dự án (Tùy chọn)</label>
+                    <input type="text" id="uploadTitle" placeholder="Ví dụ: Phụ đề Bài giảng 01" class="w-full px-3 py-2 text-sm rounded-lg bg-dark-bg border border-dark-border text-slate-200 focus:outline-none focus:border-blue-500">
+                </div>
+
+                <div class="border-2 border-dashed border-dark-border hover:border-blue-500/60 rounded-xl p-6 text-center cursor-pointer transition" onclick="document.getElementById('fileInput').click()">
+                    <input type="file" id="fileInput" accept="audio/*,video/*" class="hidden" onchange="app.handleFileSelect(this)">
+                    <i class="fa-solid fa-file-audio text-3xl text-blue-500 mb-2"></i>
+                    <p id="selectedFileName" class="text-xs text-slate-300 font-medium">Nhấp để chọn file hoặc kéo thả vào đây</p>
+                    <p class="text-[11px] text-slate-500 mt-1">MP3, WAV, M4A, FLAC, MP4, MOV, WebM (Lên đến 500MB)</p>
+                </div>
+
+                <button type="submit" id="btnSubmitUpload" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-upload"></i> Tải lên & Khởi tạo
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: AI TRANSCRIBE CONFIGURATION -->
+    <div id="modalTranscribe" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-dark-card border border-dark-border rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles text-blue-400"></i> Cấu hình Tạo Phụ đề AI
+                </h3>
+                <button onclick="app.closeModal('modalTranscribe')" class="text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form onsubmit="app.handleTranscribeSubmit(event)" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Mô hình AI Whisper</label>
+                        <select id="cfgModelSize" class="w-full px-3 py-2 text-xs rounded-lg bg-dark-bg border border-dark-border text-slate-200">
+                            <option value="tiny">Tiny (Siêu nhanh - 39M)</option>
+                            <option value="base" selected>Base (Cân bằng - 74M)</option>
+                            <option value="small">Small (Chính xác cao - 244M)</option>
+                            <option value="medium">Medium (Chuyên nghiệp - 769M)</option>
+                            <option value="large-v3">Large-v3 (Độ chính xác tối đa - 1.5B)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Ngôn ngữ nguồn</label>
+                        <select id="cfgLanguage" class="w-full px-3 py-2 text-xs rounded-lg bg-dark-bg border border-dark-border text-slate-200">
+                            <option value="auto">Tự động nhận diện</option>
+                            <option value="vi" selected>Tiếng Việt (vi)</option>
+                            <option value="en">English (en)</option>
+                            <option value="ja">Japanese (ja)</option>
+                            <option value="ko">Korean (ko)</option>
+                            <option value="zh">Chinese (zh)</option>
+                            <option value="fr">French (fr)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- AI Accuracy Features -->
+                <div class="bg-dark-bg/60 p-3 rounded-xl border border-dark-border/60 space-y-2.5">
+                    <span class="text-xs font-semibold text-slate-300 block mb-1">Tính năng nâng cao:</span>
+                    <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                        <span><i class="fa-solid fa-waveform-lines text-blue-400 mr-2"></i>Lọc tạp âm & khoảng lặng (VAD)</span>
+                        <input type="checkbox" id="cfgEnableVad" checked class="rounded bg-dark-card border-dark-border text-blue-600 focus:ring-0">
+                    </label>
+                    <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                        <span><i class="fa-solid fa-users text-emerald-400 mr-2"></i>Phân tách người nói (Diarization)</span>
+                        <input type="checkbox" id="cfgEnableDiarization" checked class="rounded bg-dark-card border-dark-border text-blue-600 focus:ring-0">
+                    </label>
+                    <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                        <span><i class="fa-solid fa-filter text-amber-400 mr-2"></i>Khử lặp từ & Hallucination AI</span>
+                        <input type="checkbox" id="cfgFilterHallucinations" checked class="rounded bg-dark-card border-dark-border text-blue-600 focus:ring-0">
+                    </label>
+                    <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                        <span><i class="fa-solid fa-scissors text-purple-400 mr-2"></i>Xóa từ đệm (ừm, à, nè...)</span>
+                        <input type="checkbox" id="cfgRemoveFillers" class="rounded bg-dark-card border-dark-border text-blue-600 focus:ring-0">
+                    </label>
+                </div>
+
+                <!-- Subtitle Formatting Defaults -->
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                        <label class="text-slate-400 block mb-1">Max Ký tự/dòng (CPL)</label>
+                        <input type="number" id="cfgMaxCpl" value="40" min="20" max="60" class="w-full px-3 py-1.5 rounded-lg bg-dark-bg border border-dark-border text-slate-200">
+                    </div>
+                    <div>
+                        <label class="text-slate-400 block mb-1">Tốc độ đọc Max CPS</label>
+                        <input type="number" id="cfgMaxCps" value="20" min="10" max="30" class="w-full px-3 py-1.5 rounded-lg bg-dark-bg border border-dark-border text-slate-200">
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> Bắt đầu xử lý
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: REAL-TIME PROGRESS -->
+    <div id="modalProgress" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="bg-dark-card border border-dark-border rounded-2xl max-w-md w-full p-6 shadow-2xl text-center space-y-4">
+            <div class="w-16 h-16 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center mx-auto text-blue-400 text-2xl animate-spin">
+                <i class="fa-solid fa-compact-disc"></i>
+            </div>
+            <div>
+                <h3 class="text-base font-bold text-slate-100">Đang tạo phụ đề tự động...</h3>
+                <p id="progressMessage" class="text-xs text-slate-400 mt-1">Đang xử lý âm thanh...</p>
+            </div>
+            
+            <div class="w-full bg-dark-bg h-2.5 rounded-full overflow-hidden border border-dark-border">
+                <div id="progressBar" class="bg-gradient-to-r from-blue-500 to-indigo-500 h-full rounded-full transition-all duration-300" style="width: 0%;"></div>
+            </div>
+            <span id="progressPercent" class="text-xs font-mono text-blue-400 font-bold">0%</span>
+        </div>
+    </div>
+
+    <!-- MODAL: TRANSLATE -->
+    <div id="modalTranslate" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-dark-card border border-dark-border rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-language text-purple-400"></i> Dịch phụ đề tự động
+                </h3>
+                <button onclick="app.closeModal('modalTranslate')" class="text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form onsubmit="app.handleTranslateSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Chọn ngôn ngữ đích</label>
+                    <select id="transTargetLang" class="w-full px-3 py-2 text-xs rounded-lg bg-dark-bg border border-dark-border text-slate-200">
+                        <option value="en">English (Tiếng Anh)</option>
+                        <option value="vi">Tiếng Việt</option>
+                        <option value="ja">Japanese (Tiếng Nhật)</option>
+                        <option value="ko">Korean (Tiếng Hàn)</option>
+                        <option value="zh-CN">Chinese (Tiếng Trung)</option>
+                        <option value="fr">French (Tiếng Pháp)</option>
+                        <option value="de">German (Tiếng Đức)</option>
+                        <option value="es">Spanish (Tây Ban Nha)</option>
+                    </select>
+                </div>
+
+                <div class="p-3 bg-dark-bg/60 rounded-xl border border-dark-border/40 text-xs text-slate-400 space-y-1">
+                    <p><i class="fa-solid fa-circle-check text-emerald-400 mr-1.5"></i>Bảo toàn 100% mốc thời gian từng câu.</p>
+                    <p><i class="fa-solid fa-circle-check text-emerald-400 mr-1.5"></i>Tạo track phụ đề mới song song không đè track gốc.</p>
+                </div>
+
+                <button type="submit" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-sm transition shadow-lg shadow-purple-500/30 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-sparkles"></i> Tiến hành Dịch thuật
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: EXPORT -->
+    <div id="modalExport" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-dark-card border border-dark-border rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-download text-emerald-400"></i> Xuất file Phụ đề
+                </h3>
+                <button onclick="app.closeModal('modalExport')" class="text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2.5 text-xs">
+                <button onclick="app.selectExportFormat('srt')" id="btnExp_srt" class="export-format-btn p-3 rounded-xl border border-blue-500 bg-blue-600/10 text-left transition">
+                    <span class="font-bold text-slate-100 block">.SRT</span>
+                    <span class="text-[10px] text-slate-400">SubRip (Phổ biến nhất)</span>
+                </button>
+                <button onclick="app.selectExportFormat('vtt')" id="btnExp_vtt" class="export-format-btn p-3 rounded-xl border border-dark-border bg-dark-bg hover:bg-slate-800 text-left transition">
+                    <span class="font-bold text-slate-100 block">.VTT</span>
+                    <span class="text-[10px] text-slate-400">WebVTT (HTML5 Video)</span>
+                </button>
+                <button onclick="app.selectExportFormat('ass')" id="btnExp_ass" class="export-format-btn p-3 rounded-xl border border-dark-border bg-dark-bg hover:bg-slate-800 text-left transition">
+                    <span class="font-bold text-slate-100 block">.ASS</span>
+                    <span class="text-[10px] text-slate-400">Karaoke & Styling</span>
+                </button>
+                <button onclick="app.selectExportFormat('json')" id="btnExp_json" class="export-format-btn p-3 rounded-xl border border-dark-border bg-dark-bg hover:bg-slate-800 text-left transition">
+                    <span class="font-bold text-slate-100 block">.JSON</span>
+                    <span class="text-[10px] text-slate-400">Dữ liệu chi tiết từng từ</span>
+                </button>
+                <button onclick="app.selectExportFormat('txt')" id="btnExp_txt" class="export-format-btn p-3 rounded-xl border border-dark-border bg-dark-bg hover:bg-slate-800 text-left transition">
+                    <span class="font-bold text-slate-100 block">.TXT</span>
+                    <span class="text-[10px] text-slate-400">Transcript văn bản thuần</span>
+                </button>
+                <button onclick="app.selectExportFormat('fcpxml')" id="btnExp_fcpxml" class="export-format-btn p-3 rounded-xl border border-dark-border bg-dark-bg hover:bg-slate-800 text-left transition">
+                    <span class="font-bold text-slate-100 block">.FCPXML</span>
+                    <span class="text-[10px] text-slate-400">Final Cut / Premiere</span>
+                </button>
+            </div>
+
+            <!-- Export Options -->
+            <div class="bg-dark-bg/60 p-3 rounded-xl border border-dark-border/60 space-y-2 text-xs">
+                <label class="flex items-center justify-between text-slate-300 cursor-pointer">
+                    <span>Kèm tên người nói (Speaker tag)</span>
+                    <input type="checkbox" id="expIncludeSpeakers" class="rounded bg-dark-card border-dark-border text-emerald-500 focus:ring-0">
+                </label>
+                <label id="expKaraokeOption" class="flex items-center justify-between text-slate-300 cursor-pointer">
+                    <span>Bật hiệu ứng Highlight từng từ (Karaoke tag cho ASS)</span>
+                    <input type="checkbox" id="expHighlightWords" class="rounded bg-dark-card border-dark-border text-emerald-500 focus:ring-0">
+                </label>
+            </div>
+
+            <button onclick="app.triggerDownloadExport()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-file-arrow-down"></i> Tải file về máy
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL: PROJECT LIST -->
+    <div id="modalProjectList" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-dark-card border border-dark-border rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open text-blue-400"></i> Danh sách Dự án
+                </h3>
+                <button onclick="app.closeModal('modalProjectList')" class="text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div id="projectListContainer" class="flex-1 overflow-y-auto space-y-2 pr-1">
+                <!-- Projects injected dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/app.js"></script>
+</body>
+</html>
