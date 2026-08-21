@@ -1,5 +1,8 @@
 # AI Subtitle Studio - Hệ thống Tạo và Quản lý Phụ đề Thông minh
 
+🌐 **Live Demo (GitHub Pages)**: [https://luuchihoa.github.io/ai-subtitle-studio/](https://luuchihoa.github.io/ai-subtitle-studio/)  
+📂 **GitHub Repository**: [https://github.com/luuchihoa/ai-subtitle-studio](https://github.com/luuchihoa/ai-subtitle-studio)
+
 Hệ thống chuyên nghiệp tạo phụ đề tự động từ file âm thanh/video với độ chính xác cao (Word-level timestamps), phân tách người nói (Speaker Diarization), chuẩn hóa phụ đề theo chuẩn phát sóng (Netflix/BBC), trình chỉnh sửa trực quan (Waveform Timeline Editor) và xuất đa định dạng (`.srt`, `.vtt`, `.ass`, `.json`, `.txt`, `.fcpxml`).
 
 ---
