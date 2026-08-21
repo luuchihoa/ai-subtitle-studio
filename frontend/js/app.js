@@ -605,6 +605,23 @@ class SubtitleStudioApp {
         }, 1000);
     }
 
+    // Common 2-word compound pairs in Vietnamese that must NEVER be broken across lines/screens
+    static COMPOUND_PAIRS = new Set([
+        "anh|em", "chị|em", "ông|bà", "cha|mẹ", "cha|con", "mẹ|con",
+        "vợ|chồng", "con|cái", "chúng|ta", "chúng|tôi", "chúng|mình",
+        "chúng|nó", "thầy|trò", "bạn|bè", "anh|chị", "cô|bác",
+        "chú|bác", "con|người", "nhân|loại", "đồng|bào", "họ|hàng",
+        "thiên|chúa", "đức|chúa", "đức|mẹ", "chúa|cha", "chúa|con",
+        "thánh|thần", "hội|thánh", "ân|huệ", "bình|an", "hy|vọng",
+        "đức|tin", "tình|yêu", "sự|sống", "cứu|độ", "mục|tử",
+        "chúc|lành", "tha|thứ", "yêu|thương", "lời|chúa", "thánh|kinh",
+        "tuôn|đổ", "chăn|dắt", "tuyên|sấm", "hạch|tội", "chăm|sóc",
+        "hướng|dẫn", "giúp|đỡ", "chia|sẻ", "phát|triển", "xây|dựng",
+        "thực|hiện", "hoàn|thành", "bắt|đầu", "kết|thúc", "tôn|thờ",
+        "ngợi|khen", "cảm|tạ", "suy|nghĩ", "tin|tưởng", "lắng|nghe",
+        "mọi|thứ", "mỗi|ngày", "hằng|ngày"
+    ]);
+
     // --- SYNTACTIC & LINGUISTIC LINE BREAKER (NETFLIX / BBC BROADCAST STANDARDS) ---
     static DANGLING_END_WORDS = new Set([
         // Imperatives, Modals & Auxiliaries
@@ -616,6 +633,7 @@ class SubtitleStudioApp {
         // Prepositions & Connectors
         "với", "cho", "về", "ở", "tại", "của", "và", "hoặc", "nhưng", "bởi", "do",
         "để", "rằng", "như", "nếu", "thì", "mà", "hỡi", "kìa", "vì", "từ", "lên", "xuống",
+        "trên", "dưới", "trong", "ngoài", "giữa", "sau", "trước",
         // English
         "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "with",
         "of", "that", "this", "is", "are", "was", "were", "will", "would", "shall", "should", "let"
@@ -635,24 +653,29 @@ class SubtitleStudioApp {
         // Balance penalty
         penalty += Math.abs(len1 - len2) * 1.5;
 
+        // Compound word protection penalty
+        const w1Clean = line1Words[line1Words.length - 1].toLowerCase().replace(/^[.,:;!?"“”'()[\]]+|[.,:;!?"“”'()[\]]+$/g, '');
+        const w2Clean = line2Words[0].toLowerCase().replace(/^[.,:;!?"“”'()[\]]+|[.,:;!?"“”'()[\]]+$/g, '');
+        if (SubtitleStudioApp.COMPOUND_PAIRS.has(`${w1Clean}|${w2Clean}`)) {
+            penalty += 850;
+        }
+
         // Anti-Orphan penalty: Line 2 with 1 or 2 words / short text
         if (line2Words.length === 1) penalty += 1000;
         else if (line2Words.length === 2 && len2 < 12) penalty += 500;
 
         // Dangling word penalty: Line 1 ending in auxiliary/determiner/preposition
-        const lastWordClean = line1Words[line1Words.length - 1].toLowerCase().replace(/^[.,:;!?"“”'()[\]]+|[.,:;!?"“”'()[\]]+$/g, '');
-        if (SubtitleStudioApp.DANGLING_END_WORDS.has(lastWordClean)) penalty += 700;
+        if (SubtitleStudioApp.DANGLING_END_WORDS.has(w1Clean)) penalty += 700;
 
         // First word of Line 2 being loose punctuation
-        const firstWordClean = line2Words[0].toLowerCase().replace(/^[.,:;!?"“”'()[\]]+|[.,:;!?"“”'()[\]]+$/g, '');
-        if ([',', ';', ':', '.'].includes(firstWordClean)) penalty += 1000;
+        if ([',', ';', ':', '.'].includes(w2Clean)) penalty += 1000;
 
         // Punctuation bonuses
         const lastChar = line1[line1.length - 1];
         if ([':', ';', '—', '-'].includes(lastChar)) penalty -= 300;
         else if ([',', '"', '”'].includes(lastChar)) penalty -= 180;
 
-        if (lastWordClean === 'rằng' || line1.endsWith('rằng:') || line1.endsWith('rằng,')) penalty -= 250;
+        if (w1Clean === 'rằng' || line1.endsWith('rằng:') || line1.endsWith('rằng,')) penalty -= 250;
 
         return penalty;
     }
@@ -704,6 +727,8 @@ class SubtitleStudioApp {
             score += (100 - Math.abs(len1 - len2));
 
             const wPrevClean = wPrev.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '');
+            const wCurrClean = wCurr.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '');
+            if (SubtitleStudioApp.COMPOUND_PAIRS.has(`${wPrevClean}|${wCurrClean}`)) score -= 900;
             if (SubtitleStudioApp.DANGLING_END_WORDS.has(wPrevClean)) score -= 700;
 
             if (i <= 1 || (words.length - i) <= 1) score -= 1000;
@@ -714,6 +739,51 @@ class SubtitleStudioApp {
             }
         }
         return bestIdx;
+    }
+
+    mergeShortFragments(segments, maxChars = 80, maxDur = 7.0) {
+        if (segments.length <= 1) return segments;
+        const merged = [];
+        let skipNext = false;
+
+        for (let i = 0; i < segments.length; i++) {
+            if (skipNext) {
+                skipNext = false;
+                continue;
+            }
+
+            const curr = segments[i];
+            if (i < segments.length - 1) {
+                const nxt = segments[i + 1];
+                const currText = curr.text.replace(/\n/g, ' ');
+                const nxtText = nxt.text.replace(/\n/g, ' ');
+                const combinedText = `${currText} ${nxtText}`;
+                const combinedDur = nxt.end_time - curr.start_time;
+                const gap = nxt.start_time - curr.end_time;
+
+                const isShortFragment = nxtText.length <= 25 || nxtText.split(/\s+/).length <= 4;
+                if (isShortFragment && combinedText.length <= maxChars && combinedDur <= maxDur && gap < 0.7) {
+                    const allWords = (curr.words || []).concat(nxt.words || []);
+                    merged.push({
+                        id: curr.id,
+                        sequence_number: merged.length + 1,
+                        start_time: curr.start_time,
+                        end_time: nxt.end_time,
+                        text: this.formatLineBreaks(combinedText, 40),
+                        words: allWords,
+                        speaker: curr.speaker || 'Speaker 1'
+                    });
+                    skipNext = true;
+                    continue;
+                }
+            }
+
+            merged.push({
+                ...curr,
+                sequence_number: merged.length + 1
+            });
+        }
+        return merged;
     }
 
     smartSegmentFromApi(words, maxCpl = 40, maxCps = 20, pauseThreshold = 0.45) {
@@ -761,10 +831,14 @@ class SubtitleStudioApp {
             const tentativeLen = currentText.length + 1 + wordStr.length;
             const dur = wEnd - blockStart;
 
+            const w1Clean = prev.word.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '');
+            const w2Clean = wordStr.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '');
+            const isCompound = SubtitleStudioApp.COMPOUND_PAIRS.has(`${w1Clean}|${w2Clean}`);
+
             let shouldSplit = false;
 
-            // 1. Unconditional Silence / Pause Gap
-            if (gap >= pauseThreshold) {
+            // 1. Unconditional Silence / Pause Gap (skip if inside compound pair unless gap > 1.0s)
+            if (gap >= pauseThreshold && (!isCompound || gap >= 1.0)) {
                 shouldSplit = true;
             }
             // 2. Hard sentence ending (. ? ! …)
@@ -782,7 +856,6 @@ class SubtitleStudioApp {
             }
 
             if (shouldSplit) {
-                // Check if current block should be split at dialogue/clause boundary
                 const blockLen = currentWords.map(x => x.word).join(' ').length;
                 if (blockLen > maxTotalChars) {
                     const clauseIdx = this.findBestClauseSplit(currentWords, maxTotalChars);
@@ -851,7 +924,7 @@ class SubtitleStudioApp {
             });
         }
 
-        return segments;
+        return this.mergeShortFragments(segments, maxTotalChars, 7.0);
     }
 
     pollJobProgress(jobId) {

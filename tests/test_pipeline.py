@@ -60,6 +60,28 @@ class TestSubtitlePipeline(unittest.TestCase):
         self.assertNotIn("\nsấm.", segments[1]["text"])
         self.assertLessEqual(len(segments[1]["text"].split("\n")), 2)
 
+    def test_compound_phrase_protection(self):
+        text = "Và lại, Thiên Chúa có đủ quyền tuôn đổ xuống trên anh em mọi thứ ân huệ"
+        words = []
+        t = 0.0
+        for w in text.split():
+            words.append({"word": w, "start": round(t, 2), "end": round(t + 0.3, 2), "probability": 0.99})
+            t += 0.35
+
+        segments = SmartSubtitleSegmenter.segment_words(words, max_cpl=40, max_lines=2)
+        # Must produce exactly 1 single screen
+        self.assertEqual(len(segments), 1)
+        sub_text = segments[0]["text"]
+        lines = sub_text.split("\n")
+        self.assertEqual(len(lines), 2)
+        # Verify 'tuôn đổ' is not broken across lines
+        self.assertNotIn("tuôn\n", sub_text)
+        # Verify 'anh em' is not broken across lines
+        self.assertNotIn("anh\n", sub_text)
+        # Verify 'ân huệ' is not broken
+        self.assertNotIn("ân\n", sub_text)
+
+
 
     def test_post_processor_hallucinations(self):
         hallucinated_text = "Xin chào các bạn đã đến kênh. Xin chào các bạn đã đến kênh. Xin chào các bạn đã đến kênh."
