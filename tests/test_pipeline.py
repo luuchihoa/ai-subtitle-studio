@@ -81,6 +81,26 @@ class TestSubtitlePipeline(unittest.TestCase):
         # Verify 'ân huệ' is not broken
         self.assertNotIn("ân\n", sub_text)
 
+    def test_liturgical_reading_segmentation(self):
+        text = "Bài trích thư thứ 2 của Thánh Phao Lô Tông Đồ gửi tính hữu Cô Rinh Tô"
+        words = []
+        t = 0.0
+        for w in text.split():
+            gap = 0.28 if w == "gửi" else 0.05
+            t += gap
+            words.append({"word": w, "start": round(t, 2), "end": round(t + 0.3, 2), "probability": 0.99})
+            t += 0.3
+
+        segments = SmartSubtitleSegmenter.segment_words(words, max_cpl=40, max_lines=2)
+        # Must split cleanly into 2 screens at Tông Đồ -> gửi
+        self.assertEqual(len(segments), 2)
+        self.assertIn("Tông Đồ", segments[0]["text"])
+        self.assertNotIn("gửi", segments[0]["text"])
+        self.assertTrue(segments[1]["text"].startswith("gửi"))
+        # Verify 'tính hữu' is kept together
+        self.assertNotIn("tính\n", segments[1]["text"])
+
+
 
 
     def test_post_processor_hallucinations(self):

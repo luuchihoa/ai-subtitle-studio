@@ -605,16 +605,33 @@ class SubtitleStudioApp {
         }, 1000);
     }
 
-    // Common 2-word compound pairs in Vietnamese that must NEVER be broken across lines/screens
+    // Multi-word compound pairs & proper names that must NEVER be broken across lines/screens
     static COMPOUND_PAIRS = new Set([
+        // Pronoun & Address Pairs
         "anh|em", "chị|em", "ông|bà", "cha|mẹ", "cha|con", "mẹ|con",
         "vợ|chồng", "con|cái", "chúng|ta", "chúng|tôi", "chúng|mình",
         "chúng|nó", "thầy|trò", "bạn|bè", "anh|chị", "cô|bác",
         "chú|bác", "con|người", "nhân|loại", "đồng|bào", "họ|hàng",
+        
+        // Biblical, Theological & Liturgical Terms
         "thiên|chúa", "đức|chúa", "đức|mẹ", "chúa|cha", "chúa|con",
         "thánh|thần", "hội|thánh", "ân|huệ", "bình|an", "hy|vọng",
         "đức|tin", "tình|yêu", "sự|sống", "cứu|độ", "mục|tử",
         "chúc|lành", "tha|thứ", "yêu|thương", "lời|chúa", "thánh|kinh",
+        "tin|mừng", "kinh|thánh", "tông|đồ", "thánh|tông", "tín|hữu",
+        "tính|hữu", "thánh|vịnh", "ngôn|sứ", "bài|trích", "thư|thứ",
+        "sáng|thế", "xuất|hành", "khải|huyền", "linh|mục", "giám|mục",
+        "giáo|hoàng", "giáo|xứ", "cộng|đoàn", "phụng|vụ", "thánh|lễ",
+        "chúa|giêsu", "chúa|giê-su", "giê|su", "ki|tô", "kitô|",
+        
+        // Biblical Proper Names
+        "phao|lô", "thánh|phao", "cô|rinh", "rinh|tô", "cô|rin",
+        "rin|tô", "ê|phê", "phê|sô", "gia|cô", "cô|bê",
+        "ti|mô", "mô|thê", "phi|líp", "líp|phê", "mát|thêu",
+        "mác|cô", "lu|ca", "gio|an", "i|sai", "sai|a",
+        "ít|ra", "ra|en", "do|thái", "ít-ra-en|",
+
+        // Compound Verbs & Nouns
         "tuôn|đổ", "chăn|dắt", "tuyên|sấm", "hạch|tội", "chăm|sóc",
         "hướng|dẫn", "giúp|đỡ", "chia|sẻ", "phát|triển", "xây|dựng",
         "thực|hiện", "hoàn|thành", "bắt|đầu", "kết|thúc", "tôn|thờ",
@@ -622,22 +639,24 @@ class SubtitleStudioApp {
         "mọi|thứ", "mỗi|ngày", "hằng|ngày"
     ]);
 
-    // --- SYNTACTIC & LINGUISTIC LINE BREAKER (NETFLIX / BBC BROADCAST STANDARDS) ---
+    // Words that must NEVER dangle at the end of Line 1
     static DANGLING_END_WORDS = new Set([
         // Imperatives, Modals & Auxiliaries
         "hãy", "đã", "đang", "sẽ", "phải", "không", "chưa", "chẳng", "được", "bị",
         "muốn", "cần", "nên", "dám", "toan", "định", "có", "là", "hết", "chớ", "đừng",
         // Determiners, Quantifiers & Classifiers
         "các", "những", "mỗi", "mọi", "từng", "cả", "con", "người", "cái", "chiếc",
-        "này", "nọ", "kia", "đó", "đây", "ấy",
-        // Prepositions & Connectors
+        "này", "nọ", "kia", "đó", "đây", "ấy", "thứ", "bài", "trích",
+        // Prepositions, Connectors & Directional Verbs
         "với", "cho", "về", "ở", "tại", "của", "và", "hoặc", "nhưng", "bởi", "do",
         "để", "rằng", "như", "nếu", "thì", "mà", "hỡi", "kìa", "vì", "từ", "lên", "xuống",
-        "trên", "dưới", "trong", "ngoài", "giữa", "sau", "trước",
+        "trên", "dưới", "trong", "ngoài", "giữa", "sau", "trước", "gửi", "theo",
         // English
         "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "with",
         "of", "that", "this", "is", "are", "was", "were", "will", "would", "shall", "should", "let"
     ]);
+
+    static RECIPIENT_STARTERS = new Set(["gửi", "kính", "trao", "theo", "trích"]);
 
     evaluateLineSplitPenalty(line1Words, line2Words, maxCpl = 40) {
         if (!line1Words.length || !line2Words.length) return 99999;
@@ -669,6 +688,14 @@ class SubtitleStudioApp {
 
         // First word of Line 2 being loose punctuation
         if ([',', ';', ':', '.'].includes(w2Clean)) penalty += 1000;
+
+        // Preference: Line 2 starting with recipient marker 'gửi' / 'theo'
+        if (SubtitleStudioApp.RECIPIENT_STARTERS.has(w2Clean)) penalty -= 120;
+
+        // Preference: Line 1 ending after author/title 'Tông Đồ'
+        if (w1Clean === 'đồ' && line1Words.length >= 2 && line1Words[line1Words.length - 2].toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '') === 'tông') {
+            penalty -= 150;
+        }
 
         // Punctuation bonuses
         const lastChar = line1[line1.length - 1];
@@ -718,16 +745,18 @@ class SubtitleStudioApp {
             const len1 = words.slice(0, i).map(x => x.word).join(' ').length;
             const len2 = words.slice(i).map(x => x.word).join(' ').length;
 
+            const wCurrClean = wCurr.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '');
+            const wPrevClean = wPrev.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '');
+
             let score = 0;
             if (wPrev.endsWith(':') || ['rằng:', 'rằng'].includes(wPrev.toLowerCase())) score += 600;
+            else if (SubtitleStudioApp.RECIPIENT_STARTERS.has(wCurrClean)) score += 450;
             else if ([';', '—', '-', '"', '”'].some(p => wPrev.endsWith(p))) score += 350;
-            else if (wPrev.endsWith(',') && ['hỡi', 'thưa', 'kính', 'nhưng', 'để', 'khi', 'vì', 'mà', 'hãy'].includes(wCurr.toLowerCase())) score += 300;
+            else if (wPrev.endsWith(',') && ['hỡi', 'thưa', 'kính', 'nhưng', 'để', 'khi', 'vì', 'mà', 'hãy'].includes(wCurrClean)) score += 300;
             else if (wPrev.endsWith(',')) score += 150;
 
             score += (100 - Math.abs(len1 - len2));
 
-            const wPrevClean = wPrev.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '');
-            const wCurrClean = wCurr.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '');
             if (SubtitleStudioApp.COMPOUND_PAIRS.has(`${wPrevClean}|${wCurrClean}`)) score -= 900;
             if (SubtitleStudioApp.DANGLING_END_WORDS.has(wPrevClean)) score -= 700;
 
@@ -761,8 +790,11 @@ class SubtitleStudioApp {
                 const combinedDur = nxt.end_time - curr.start_time;
                 const gap = nxt.start_time - curr.end_time;
 
+                const nxtFirstWord = nxtText.split(/\s+/)[0]?.toLowerCase().replace(/^[.,:;!?"“”]+|[.,:;!?"“”]+$/g, '') || '';
+                const isRecipientClause = SubtitleStudioApp.RECIPIENT_STARTERS.has(nxtFirstWord) && gap >= 0.25;
+
                 const isShortFragment = nxtText.length <= 25 || nxtText.split(/\s+/).length <= 4;
-                if (isShortFragment && combinedText.length <= maxChars && combinedDur <= maxDur && gap < 0.7) {
+                if (!isRecipientClause && isShortFragment && combinedText.length <= maxChars && combinedDur <= maxDur && gap < 0.7) {
                     const allWords = (curr.words || []).concat(nxt.words || []);
                     merged.push({
                         id: curr.id,
@@ -786,7 +818,7 @@ class SubtitleStudioApp {
         return merged;
     }
 
-    smartSegmentFromApi(words, maxCpl = 40, maxCps = 20, pauseThreshold = 0.45) {
+    smartSegmentFromApi(words, maxCpl = 40, maxCps = 20, pauseThreshold = 0.40) {
         if (!words || words.length === 0) return [];
         
         // Step 1: Merge lone punctuation tokens (: , . ; ! ?) into previous words
@@ -837,19 +869,23 @@ class SubtitleStudioApp {
 
             let shouldSplit = false;
 
-            // 1. Unconditional Silence / Pause Gap (skip if inside compound pair unless gap > 1.0s)
+            // 1. Silence / Pause Gap (skip if inside compound pair unless gap >= 1.0s)
             if (gap >= pauseThreshold && (!isCompound || gap >= 1.0)) {
                 shouldSplit = true;
             }
-            // 2. Hard sentence ending (. ? ! …)
+            // 2. Rhetorical breath pause (gap >= 0.25s) before recipient marker 'gửi' / 'theo'
+            else if (SubtitleStudioApp.RECIPIENT_STARTERS.has(w2Clean) && gap >= 0.25 && tentativeLen >= 25) {
+                shouldSplit = true;
+            }
+            // 3. Hard sentence ending (. ? ! …)
             else if (/[.!?…]$/.test(prev.word) && (gap >= 0.20 || tentativeLen >= 30)) {
                 shouldSplit = true;
             }
-            // 3. Dialogue introduction (: or rằng :)
+            // 4. Dialogue introduction (: or rằng :)
             else if ((prev.word.endsWith(':') || ['rằng:', 'rằng'].includes(prev.word.toLowerCase())) && tentativeLen >= 25) {
                 shouldSplit = true;
             }
-            // 4. Exceeds max screen capacity or max duration
+            // 5. Exceeds max screen capacity or max duration
             else if (tentativeLen > maxTotalChars || dur > 6.5) {
                 const remaining = cleanWords.length - i;
                 if (remaining > 1) shouldSplit = true;

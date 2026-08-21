@@ -7,36 +7,52 @@ class SmartSubtitleSegmenter:
     
     Rules & Features:
     1. Maximum 2 lines per subtitle screen (Strict broadcast rule: NEVER 3 lines).
-    2. Compound Word & Phrase Protection (NEVER split compound word pairs across lines or screens):
-       - Pronoun pairs: anh em, chị em, ông bà, cha mẹ, chúng ta, chúng tôi, vợ chồng, con cái...
-       - Compound verbs/nouns: tuôn đổ, chăn dắt, tuyên sấm, hạch tội, Thiên Chúa, Đức Chúa, ân huệ, bình an...
-    3. Strict Syntactic phrase protection:
+    2. Comprehensive Compound Word & Proper Name Protection:
+       - Biblical/Liturgical terms: Phao Lô, Tông Đồ, tín hữu, tính hữu, Cô Rinh Tô, Ê Phê Sô, Tin Mừng, Lời Chúa, Thiên Chúa, Đức Chúa...
+       - Pronoun pairs: anh em, chị em, ông bà, cha mẹ, chúng ta, chúng tôi, con cái...
+       - Compound verbs/nouns: tuôn đổ, chăn dắt, tuyên sấm, hạch tội, ân huệ, bình an...
+    3. Rhetorical & Prepositional Clause Segmentation:
+       - Recognizes rhetorical pauses (>= 0.25s) before recipient markers ('gửi', 'kính gửi', 'theo Thánh', 'trong sách').
+    4. Strict Syntactic phrase protection:
        - Never ends Line 1 with auxiliaries/imperatives: hãy, đã, đang, sẽ, phải, không, chưa, được, bị...
        - Never ends Line 1 with determiners/quantifiers: các, những, mỗi, mọi, từng, cả...
-       - Never ends Line 1 with prepositions/conjunctions: với, cho, về, ở, tại, của, và, hoặc, nhưng, bởi, để, rằng, như, hỡi...
-    4. Anti-Fragmentation & Post-Segmentation Merger:
-       - Automatically merges trailing fragments (e.g. 'em mọi thứ ân huệ') into a single balanced 2-line screen when length allows.
-    5. Knuth-Plass DP Optimal 2-line balancing.
+       - Never ends Line 1 with prepositions/conjunctions/verbs: với, cho, về, ở, tại, của, và, hoặc, nhưng, bởi, để, rằng, như, hỡi, gửi, theo, trong, thứ, bài...
+    5. Anti-Fragmentation & Post-Segmentation Merger.
+    6. Knuth-Plass DP Optimal 2-line balancing.
     """
 
-    # Common 2-word compound pairs in Vietnamese that must NEVER be broken across lines/screens
+    # Multi-word compound pairs & proper names that must NEVER be broken across lines/screens
     COMPOUND_PAIRS = {
         # Pronoun & Address Pairs
         ("anh", "em"), ("chị", "em"), ("ông", "bà"), ("cha", "mẹ"), ("cha", "con"), ("mẹ", "con"),
         ("vợ", "chồng"), ("con", "cái"), ("chúng", "ta"), ("chúng", "tôi"), ("chúng", "mình"),
         ("chúng", "nó"), ("thầy", "trò"), ("bạn", "bè"), ("anh", "chị"), ("cô", "bác"),
         ("chú", "bác"), ("con", "người"), ("nhân", "loại"), ("đồng", "bào"), ("họ", "hàng"),
-        # Sacred & Religious Terms
+        
+        # Biblical, Theological & Liturgical Terms
         ("thiên", "chúa"), ("đức", "chúa"), ("đức", "mẹ"), ("chúa", "cha"), ("chúa", "con"),
         ("thánh", "thần"), ("hội", "thánh"), ("ân", "huệ"), ("bình", "an"), ("hy", "vọng"),
         ("đức", "tin"), ("tình", "yêu"), ("sự", "sống"), ("cứu", "độ"), ("mục", "tử"),
         ("chúc", "lành"), ("tha", "thứ"), ("yêu", "thương"), ("lời", "chúa"), ("thánh", "kinh"),
+        ("tin", "mừng"), ("kinh", "thánh"), ("tông", "đồ"), ("thánh", "tông"), ("tín", "hữu"),
+        ("tính", "hữu"), ("thánh", "vịnh"), ("ngôn", "sứ"), ("bài", "trích"), ("thư", "thứ"),
+        ("sáng", "thế"), ("xuất", "hành"), ("khải", "huyền"), ("linh", "mục"), ("giám", "mục"),
+        ("giáo", "hoàng"), ("giáo", "xứ"), ("cộng", "đoàn"), ("phụng", "vụ"), ("thánh", "lễ"),
+        ("chúa", "giêsu"), ("chúa", "giê-su"), ("giê", "su"), ("ki", "tô"), ("kitô", ""),
+        
+        # Biblical Proper Names (syllables)
+        ("phao", "lô"), ("thánh", "phao"), ("cô", "rinh"), ("rinh", "tô"), ("cô", "rin"),
+        ("rin", "tô"), ("ê", "phê"), ("phê", "sô"), ("gia", "cô"), ("cô", "bê"),
+        ("ti", "mô"), ("mô", "thê"), ("phi", "líp"), ("líp", "phê"), ("mát", "thêu"),
+        ("mác", "cô"), ("lu", "ca"), ("gio", "an"), ("i", "sai"), ("sai", "a"),
+        ("ít", "ra"), ("ra", "en"), ("do", "thái"), ("ít-ra-en", ""),
+
         # Compound Verbs & Nouns
         ("tuôn", "đổ"), ("chăn", "dắt"), ("tuyên", "sấm"), ("hạch", "tội"), ("chăm", "sóc"),
         ("hướng", "dẫn"), ("giúp", "đỡ"), ("chia", "sẻ"), ("phát", "triển"), ("xây", "dựng"),
         ("thực", "hiện"), ("hoàn", "thành"), ("bắt", "đầu"), ("kết", "thúc"), ("tôn", "thờ"),
         ("ngợi", "khen"), ("cảm", "tạ"), ("suy", "nghĩ"), ("tin", "tưởng"), ("lắng", "nghe"),
-        ("mọi", "thứ"), ("mỗi", "ngày"), ("hằng", "ngày"), ("ít-ra-en", "")
+        ("mọi", "thứ"), ("mỗi", "ngày"), ("hằng", "ngày")
     }
 
     # Words that must NEVER dangle at the end of Line 1
@@ -46,15 +62,18 @@ class SmartSubtitleSegmenter:
         "muốn", "cần", "nên", "dám", "toan", "định", "có", "là", "hết", "chớ", "đừng",
         # Determiners, Quantifiers & Classifiers
         "các", "những", "mỗi", "mọi", "từng", "cả", "con", "người", "cái", "chiếc",
-        "này", "nọ", "kia", "đó", "đây", "ấy",
-        # Prepositions & Connectors
+        "này", "nọ", "kia", "đó", "đây", "ấy", "thứ", "bài", "trích",
+        # Prepositions, Connectors & Directional Verbs
         "với", "cho", "về", "ở", "tại", "của", "và", "hoặc", "nhưng", "bởi", "do",
         "để", "rằng", "như", "nếu", "thì", "mà", "hỡi", "kìa", "vì", "từ", "lên", "xuống",
-        "trên", "dưới", "trong", "ngoài", "giữa", "sau", "trước",
+        "trên", "dưới", "trong", "ngoài", "giữa", "sau", "trước", "gửi", "theo",
         # English equivalents
         "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "with",
         "of", "that", "this", "is", "are", "was", "were", "will", "would", "shall", "should", "let"
     }
+
+    # Recipient & Clause Starter words
+    RECIPIENT_STARTERS = {"gửi", "kính", "trao", "theo", "trích"}
 
     @classmethod
     def evaluate_line_split_penalty(cls, line1_words: List[str], line2_words: List[str], max_cpl: int = 40) -> float:
@@ -77,29 +96,38 @@ class SmartSubtitleSegmenter:
         if len2 > max_cpl:
             penalty += (len2 - max_cpl) * 60.0
 
-        # Length balance penalty: Keep Line 1 and Line 2 balanced
+        # Length balance penalty
         length_diff = abs(len1 - len2)
         penalty += length_diff * 1.5
 
-        # Compound Word Protection Penalty: Strict penalty against breaking compound pairs
         w1_clean = line1_words[-1].lower().strip(".,:;!?\"“”'()[]")
         w2_clean = line2_words[0].lower().strip(".,:;!?\"“”'()[]")
+
+        # Compound Word Protection Penalty: Strict penalty against breaking compound pairs
         if (w1_clean, w2_clean) in cls.COMPOUND_PAIRS:
-            penalty += 850.0  # Heavy penalty for breaking 'tuôn/đổ', 'anh/em', 'Thiên/Chúa'
+            penalty += 850.0
 
         # Anti-Orphan penalty: Line 2 with only 1 or 2 words / < 12 characters
         if len(line2_words) == 1:
-            penalty += 1000.0  # Strict rejection of 1-word second line
+            penalty += 1000.0
         elif len(line2_words) == 2 and len2 < 12:
             penalty += 500.0
 
-        # Dangling word penalty: Line 1 ending with auxiliary, preposition, or determiner
+        # Dangling word penalty: Line 1 ending with auxiliary, preposition, determiner, or 'gửi'
         if w1_clean in cls.DANGLING_END_WORDS:
             penalty += 700.0
 
         # First word of line 2 being loose punctuation
         if w2_clean in {",", ";", ":", "."}:
             penalty += 1000.0
+
+        # Preference: Line 2 starting with recipient marker 'gửi' / 'theo'
+        if w2_clean in cls.RECIPIENT_STARTERS:
+            penalty -= 120.0
+
+        # Preference: Line 1 ending after author/title 'Tông Đồ' / 'Thánh Phaolô'
+        if w1_clean == "đồ" and len(line1_words) >= 2 and line1_words[-2].lower().strip(".,:;!?") == "tông":
+            penalty -= 150.0
 
         # Preference: Break at punctuation (:, ,, ;)
         raw_last_char = line1_words[-1][-1]
@@ -118,7 +146,6 @@ class SmartSubtitleSegmenter:
     def format_line_breaks(cls, text: str, max_cpl: int = 40, max_lines: int = 2) -> str:
         """
         Calculates the optimal 2-line break for a subtitle screen.
-        Guarantees maximum 2 lines, preserves compound words, no dangling words, no orphan words.
         """
         clean_text = re.sub(r'\s+([,.:;?!])', r'\1', text).strip()
         words = clean_text.split()
@@ -173,10 +200,13 @@ class SmartSubtitleSegmenter:
             # 1. Dialogue introduction (: or rằng :)
             if w_prev.endswith(":") or w_prev.lower() in {"rằng:", "rằng"}:
                 score += 600.0
-            # 2. Semicolon or dash
+            # 2. Recipient introduction ('gửi tín hữu...')
+            elif w_curr.lower().strip(".,:;!?") in cls.RECIPIENT_STARTERS:
+                score += 450.0
+            # 3. Semicolon or dash
             elif any(w_prev.endswith(p) for p in {";", "—", "-", "\"", "”"}):
                 score += 350.0
-            # 3. Comma followed by vocative or connector (hỡi, thưa, nhưng, để, khi, vì, mà)
+            # 4. Comma followed by vocative or connector (hỡi, thưa, nhưng, để, khi, vì, mà)
             elif w_prev.endswith(",") and w_curr.lower() in {"hỡi", "thưa", "kính", "nhưng", "để", "khi", "vì", "mà", "hãy"}:
                 score += 300.0
             elif w_prev.endswith(","):
@@ -208,8 +238,8 @@ class SmartSubtitleSegmenter:
     @classmethod
     def merge_short_fragments(cls, segments: List[Dict[str, Any]], max_chars: int = 80, max_dur: float = 7.0) -> List[Dict[str, Any]]:
         """
-        Post-processing pass: Merges trailing orphan fragments (e.g. 'em mọi thứ ân huệ')
-        back into the preceding segment if total length and duration fit on 1 screen.
+        Post-processing pass: Merges trailing orphan fragments into the preceding segment
+        unless separated by a clear recipient boundary or strong pause.
         """
         if len(segments) <= 1:
             return segments
@@ -231,11 +261,12 @@ class SmartSubtitleSegmenter:
                 combined_dur = nxt["end_time"] - curr["start_time"]
                 gap = nxt["start_time"] - curr["end_time"]
 
-                # Check if next segment is a short fragment (<= 25 chars or <= 4 words)
-                # and combining fits comfortably in 1 screen (<= 80 chars, <= 7.0s, gap < 0.7s)
+                # Do NOT merge if nxt starts with a major recipient clause (e.g. 'gửi tín hữu...') with a clear gap >= 0.25s
+                nxt_first_word = nxt_text.split()[0].lower().strip(".,:;!?") if nxt_text.split() else ""
+                is_recipient_clause = nxt_first_word in cls.RECIPIENT_STARTERS and gap >= 0.25
+
                 is_short_fragment = len(nxt_text) <= 25 or len(nxt_text.split()) <= 4
-                if is_short_fragment and len(combined_text) <= max_chars and combined_dur <= max_dur and gap < 0.7:
-                    # Merge nxt into curr
+                if not is_recipient_clause and is_short_fragment and len(combined_text) <= max_chars and combined_dur <= max_dur and gap < 0.7:
                     all_words = (curr.get("words") or []) + (nxt.get("words") or [])
                     merged.append({
                         "sequence_number": len(merged) + 1,
@@ -263,7 +294,7 @@ class SmartSubtitleSegmenter:
         min_duration: float = 0.8,
         max_duration: float = 7.0,
         max_cps: float = 20.0,
-        pause_threshold: float = 0.45
+        pause_threshold: float = 0.40
     ) -> List[Dict[str, Any]]:
         """
         Groups timecoded words into broadcast-standard subtitle screens.
@@ -311,26 +342,29 @@ class SmartSubtitleSegmenter:
             tentative_text = f"{current_text} {word_str}"
             tentative_len = len(tentative_text)
 
-            should_split = False
-
-            # Check if this boundary is between a compound pair
             w1_clean = prev_word["word"].lower().strip(".,:;!?\"“”")
             w2_clean = word_str.lower().strip(".,:;!?\"“”")
             is_compound = (w1_clean, w2_clean) in cls.COMPOUND_PAIRS
 
-            # 1. Silence / Pause Gap (Only split if not inside compound pair or gap is huge > 1.0s)
+            should_split = False
+
+            # 1. Unconditional Silence / Pause Gap (skip if inside compound pair unless gap >= 1.0s)
             if gap >= pause_threshold and (not is_compound or gap >= 1.0):
                 should_split = True
 
-            # 2. Hard sentence end (. ? ! …)
+            # 2. Rhetorical breath pause (gap >= 0.25s) before recipient marker 'gửi' / 'theo'
+            elif w2_clean in cls.RECIPIENT_STARTERS and gap >= 0.25 and tentative_len >= 25:
+                should_split = True
+
+            # 3. Hard sentence end (. ? ! …)
             elif any(prev_word["word"].endswith(p) for p in hard_punctuation) and (gap >= 0.20 or tentative_len >= 30):
                 should_split = True
 
-            # 3. Direct dialogue introduction (: or rằng :)
+            # 4. Direct dialogue introduction (: or rằng :)
             elif (prev_word["word"].endswith(":") or prev_word["word"].lower() in {"rằng:", "rằng"}) and tentative_len >= 25:
                 should_split = True
 
-            # 4. Exceeds max screen capacity (80 chars) or max duration
+            # 5. Exceeds max screen capacity (80 chars) or max duration
             elif tentative_len > max_total_chars or current_duration > max_duration:
                 remaining_words = len(clean_words) - i
                 if remaining_words > 1:
@@ -416,7 +450,7 @@ class SmartSubtitleSegmenter:
         min_duration: float = 0.8,
         max_duration: float = 7.0,
         max_cps: float = 20.0,
-        pause_threshold: float = 0.45
+        pause_threshold: float = 0.40
     ) -> List[Dict[str, Any]]:
         all_words = []
         for s in raw_segments:
